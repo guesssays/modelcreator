@@ -1,0 +1,10 @@
+[functions]
+  node_bundler = "esbuild"
+  directory = "netlify/functions"
+
+# Удобный человекочитаемый URL для вебхука
+[[redirects]]
+  from = "/telegram-webhook"
+  to = "/.netlify/functions/telegram-bot"
+  status = 200
+  force = true

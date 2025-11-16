@@ -1,0 +1,15 @@
+{
+  "name": "tg-fashion-gemini-bot",
+  "version": "1.0.0",
+  "description": "Telegram-бот для генерации моделей/персонажей с одеждой через Gemini",
+  "main": "index.js",
+  "scripts": {
+    "dev": "netlify dev",
+    "build": "echo \"No build step\"",
+    "start": "netlify dev"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {}
+}
