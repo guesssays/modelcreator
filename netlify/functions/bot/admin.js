@@ -1,5 +1,5 @@
 // bot/admin.js
-const { sendMessage } = require("./telegram");
+const { sendMessage, answerCallback } = require("./telegram");
 const {
   adminKeyboard,
   getBaseKeyboard
@@ -19,6 +19,7 @@ async function notifyAdminNewShop(shop) {
     console.warn("ADMIN_CHAT_ID is not set, skipping admin notify");
     return;
   }
+
   const text = `
 Новый магазин ожидает подтверждения:
 
@@ -27,48 +28,103 @@ Instagram/Telegram: ${shop.instagram || "—"}
 Контакт: ${shop.contact || "—"}
 Chat ID: ${shop.chatId}
 
-Чтобы выдать пробные генерации, отправьте:
-/approve ${shop.chatId}
-
-Чтобы отклонить или заблокировать:
-/reject ${shop.chatId}
+Выберите действие с помощью кнопок ниже.
 `.trim();
 
-  await sendMessage(ADMIN_CHAT_ID, text, adminKeyboard());
+  await sendMessage(ADMIN_CHAT_ID, text, {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          {
+            text: "✅ Подтвердить",
+            callback_data: `approve:${shop.chatId}`
+          },
+          {
+            text: "❌ Отклонить",
+            callback_data: `reject:${shop.chatId}`
+          }
+        ]
+      ]
+    },
+    ...adminKeyboard() // оставляем обычную клавиатуру панели тоже
+  });
 }
 
+// общая функция апрува
+async function approveShop(adminChatId, targetId) {
+  const shop = getShop(targetId);
+  if (!shop) {
+    await sendMessage(
+      adminChatId,
+      `Магазин с chatId ${targetId} не найден.`,
+      adminKeyboard()
+    );
+    return;
+  }
+
+  shop.status = "active";
+  shop.plan = "trial";
+  shop.creditsTotal = TRIAL_CREDITS;
+  shop.creditsLeft = TRIAL_CREDITS;
+  ensureDailyCounters(shop);
+
+  await sendMessage(
+    adminChatId,
+    `Магазин «${shop.name}» (chatId: ${shop.chatId}) одобрен. Выдано ${TRIAL_CREDITS} пробных генераций.`,
+    adminKeyboard()
+  );
+
+  await sendMessage(
+    shop.chatId,
+    `Ваша заявка успешно прошла автоматическую проверку системой! 🎉\nВам выдано ${TRIAL_CREDITS} пробных генераций. Нажмите «🎨 Генерировать», чтобы начать.`,
+    getBaseKeyboard(shop.chatId)
+  );
+}
+
+// общая функция отклонения
+async function rejectShop(adminChatId, targetId) {
+  const shop = getShop(targetId);
+  if (!shop) {
+    await sendMessage(
+      adminChatId,
+      `Магазин с chatId ${targetId} не найден.`,
+      adminKeyboard()
+    );
+    return;
+  }
+
+  shop.status = "blocked";
+  shop.creditsTotal = 0;
+  shop.creditsLeft = 0;
+
+  await sendMessage(
+    adminChatId,
+    `Магазин «${shop.name}» (chatId: ${shop.chatId}) помечен как заблокированный.`,
+    adminKeyboard()
+  );
+
+  await sendMessage(
+    shop.chatId,
+    "К сожалению, ваша заявка не прошла автоматическую проверку системы. Если вы считаете, что это ошибка — свяжитесь со службой поддержки сервиса.",
+    getBaseKeyboard(shop.chatId)
+  );
+}
+
+// обработка текстовых админ-команд (как было + используем общие функции)
 async function handleAdminCommand(chatId, text) {
   // /approve <chatId>
   if (text.startsWith("/approve ")) {
     const parts = text.split(" ").filter(Boolean);
     if (parts.length < 2) {
-      await sendMessage(chatId, "Использование: /approve <chatId>", adminKeyboard());
+      await sendMessage(
+        chatId,
+        "Использование: /approve <chatId>",
+        adminKeyboard()
+      );
       return;
     }
     const targetId = parts[1];
-    const shop = getShop(targetId);
-    if (!shop) {
-      await sendMessage(chatId, `Магазин с chatId ${targetId} не найден.`, adminKeyboard());
-      return;
-    }
-
-    shop.status = "active";
-    shop.plan = "trial";
-    shop.creditsTotal = TRIAL_CREDITS;
-    shop.creditsLeft = TRIAL_CREDITS;
-    ensureDailyCounters(shop);
-
-    await sendMessage(
-      chatId,
-      `Магазин «${shop.name}» (chatId: ${shop.chatId}) одобрен. Выдано ${TRIAL_CREDITS} пробных генераций.`,
-      adminKeyboard()
-    );
-
-    await sendMessage(
-      shop.chatId,
-      `Ваша заявка успешно прошла автоматическую проверку системой! 🎉\nВам выдано ${TRIAL_CREDITS} пробных генераций. Нажмите «🎨 Попробовать генерацию», чтобы начать.`,
-      getBaseKeyboard(shop.chatId)
-    );
+    await approveShop(chatId, targetId);
     return;
   }
 
@@ -76,31 +132,15 @@ async function handleAdminCommand(chatId, text) {
   if (text.startsWith("/reject ")) {
     const parts = text.split(" ").filter(Boolean);
     if (parts.length < 2) {
-      await sendMessage(chatId, "Использование: /reject <chatId>", adminKeyboard());
+      await sendMessage(
+        chatId,
+        "Использование: /reject <chatId>",
+        adminKeyboard()
+      );
       return;
     }
     const targetId = parts[1];
-    const shop = getShop(targetId);
-    if (!shop) {
-      await sendMessage(chatId, `Магазин с chatId ${targetId} не найден.`, adminKeyboard());
-      return;
-    }
-
-    shop.status = "blocked";
-    shop.creditsTotal = 0;
-    shop.creditsLeft = 0;
-
-    await sendMessage(
-      chatId,
-      `Магазин «${shop.name}» (chatId: ${shop.chatId}) помечен как заблокированный.`,
-      adminKeyboard()
-    );
-
-    await sendMessage(
-      shop.chatId,
-      "К сожалению, ваша заявка не прошла автоматическую проверку системы. Если вы считаете, что это ошибка — свяжитесь со службой поддержки сервиса.",
-      getBaseKeyboard(shop.chatId)
-    );
+    await rejectShop(chatId, targetId);
     return;
   }
 
@@ -108,7 +148,11 @@ async function handleAdminCommand(chatId, text) {
   if (text === "/list_shops") {
     const all = listAllShops();
     if (!all.length) {
-      await sendMessage(chatId, "Пока нет ни одного зарегистрированного магазина.", adminKeyboard());
+      await sendMessage(
+        chatId,
+        "Пока нет ни одного зарегистрированного магазина.",
+        adminKeyboard()
+      );
       return;
     }
     const lines = all
@@ -125,7 +169,11 @@ async function handleAdminCommand(chatId, text) {
   if (text === "⏳ Ожидают подтверждения") {
     const arr = listShopsByStatus("pending");
     if (!arr.length) {
-      await sendMessage(chatId, "Нет магазинов, ожидающих подтверждения.", adminKeyboard());
+      await sendMessage(
+        chatId,
+        "Нет магазинов, ожидающих подтверждения.",
+        adminKeyboard()
+      );
       return;
     }
     const lines = arr.map(
@@ -139,12 +187,15 @@ async function handleAdminCommand(chatId, text) {
   if (text === "✅ Активные магазины") {
     const arr = listShopsByStatus("active");
     if (!arr.length) {
-      await sendMessage(chatId, "Нет активных магазинов.", adminKeyboard());
+      await sendMessage(
+        chatId,
+        "Нет активных магазинов.",
+        adminKeyboard()
+      );
       return;
     }
     const lines = arr.map(
-      (s) =>
-        `• ${s.name} (chatId: ${s.chatId}, credits: ${s.creditsLeft})`
+      (s) => `• ${s.name} (chatId: ${s.chatId}, credits: ${s.creditsLeft})`
     );
     await sendMessage(chatId, lines.join("\n"), adminKeyboard());
     return;
@@ -153,13 +204,14 @@ async function handleAdminCommand(chatId, text) {
   if (text === "⛔ Заблокированные магазины") {
     const arr = listShopsByStatus("blocked");
     if (!arr.length) {
-      await sendMessage(chatId, "Нет заблокированных магазинов.", adminKeyboard());
+      await sendMessage(
+        chatId,
+        "Нет заблокированных магазинов.",
+        adminKeyboard()
+      );
       return;
     }
-    const lines = arr.map(
-      (s) =>
-        `• ${s.name} (chatId: ${s.chatId})`
-    );
+    const lines = arr.map((s) => `• ${s.name} (chatId: ${s.chatId})`);
     await sendMessage(chatId, lines.join("\n"), adminKeyboard());
     return;
   }
@@ -167,7 +219,11 @@ async function handleAdminCommand(chatId, text) {
   if (text === "🔄 Все магазины") {
     const all = listAllShops();
     if (!all.length) {
-      await sendMessage(chatId, "Пока нет ни одного зарегистрированного магазина.", adminKeyboard());
+      await sendMessage(
+        chatId,
+        "Пока нет ни одного зарегистрированного магазина.",
+        adminKeyboard()
+      );
       return;
     }
     const lines = all
@@ -181,7 +237,27 @@ async function handleAdminCommand(chatId, text) {
   }
 }
 
+// обработка callback_data от inline-кнопок
+async function handleAdminCallback(fromId, data) {
+  if (!data) return;
+
+  if (data.startsWith("approve:")) {
+    const targetId = data.split(":")[1];
+    await approveShop(fromId, targetId);
+    await answerCallback(); // просто закрыть "часики"
+    return;
+  }
+
+  if (data.startsWith("reject:")) {
+    const targetId = data.split(":")[1];
+    await rejectShop(fromId, targetId);
+    await answerCallback();
+    return;
+  }
+}
+
 module.exports = {
   notifyAdminNewShop,
-  handleAdminCommand
+  handleAdminCommand,
+  handleAdminCallback
 };
