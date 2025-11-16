@@ -31,8 +31,6 @@ Chat ID: ${shop.chatId}
 Выберите действие с помощью кнопок ниже.
 `.trim();
 
-  // ВАЖНО: тут ТОЛЬКО inline_keyboard.
-  // Нельзя одновременно передать и inline_keyboard, и обычный keyboard в одном reply_markup.
   await sendMessage(ADMIN_CHAT_ID, text, {
     reply_markup: {
       inline_keyboard: [
@@ -49,9 +47,6 @@ Chat ID: ${shop.chatId}
       ]
     }
   });
-
-  // Если хочешь, можно вторым сообщением прислать панель:
-  // await sendMessage(ADMIN_CHAT_ID, "Панель администратора:", adminKeyboard());
 }
 
 // общая функция апрува
@@ -114,7 +109,7 @@ async function rejectShop(adminChatId, targetId) {
   );
 }
 
-// обработка текстовых админ-команд (как было + используем общие функции)
+// обработка текстовых админ-команд
 async function handleAdminCommand(chatId, text) {
   // /approve <chatId>
   if (text.startsWith("/approve ")) {
@@ -242,21 +237,20 @@ async function handleAdminCommand(chatId, text) {
 }
 
 // обработка callback_data от inline-кнопок
-async function handleAdminCallback(fromId, data) {
+async function handleAdminCallback(fromId, data, callbackId) {
   if (!data) return;
 
   if (data.startsWith("approve:")) {
     const targetId = data.split(":")[1];
     await approveShop(fromId, targetId);
-    // если answerCallback() у тебя принимает id — тут нужно передавать его из handler'а
-    await answerCallback();
+    await answerCallback(callbackId);
     return;
   }
 
   if (data.startsWith("reject:")) {
     const targetId = data.split(":")[1];
     await rejectShop(fromId, targetId);
-    await answerCallback();
+    await answerCallback(callbackId);
     return;
   }
 }

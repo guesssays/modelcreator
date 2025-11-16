@@ -49,6 +49,10 @@ function activeShopKeyboard() {
           { text: "🎨 Генерировать" },
           { text: "🏬 Мой магазин" }
         ],
+        [
+          { text: "➕ Новый магазин" },
+          { text: "🗑 Удалить магазин" }
+        ],
         [{ text: "💳 Тарифы и цены" }],
         [{ text: "ℹ️ Помощь" }]
       ],
@@ -89,12 +93,29 @@ function getBaseKeyboard(chatId) {
 }
 
 // Клавиатуры шагов генерации
+
 function itemTypeKeyboard() {
   return {
     reply_markup: {
       keyboard: [
-        [{ text: "Худи" }, { text: "Куртка" }, { text: "Футболка" }],
-        [{ text: "Штаны" }, { text: "Обувь" }, { text: "Комплект" }],
+        [{ text: "Худи" }, { text: "Свитшот" }, { text: "Футболка" }],
+        [{ text: "Куртка" }, { text: "Пальто" }, { text: "Жилет" }],
+        [{ text: "Штаны" }, { text: "Джинсы" }, { text: "Шорты" }],
+        [{ text: "Платье" }, { text: "Юбка" }, { text: "Костюм" }],
+        [{ text: "Обувь" }, { text: "Комплект" }, { text: "Аксессуары" }],
+        [{ text: "⬅️ В главное меню" }]
+      ],
+      resize_keyboard: true,
+      one_time_keyboard: true
+    }
+  };
+}
+
+function peopleModeKeyboard() {
+  return {
+    reply_markup: {
+      keyboard: [
+        [{ text: "Один человек" }, { text: "Пара" }],
         [{ text: "⬅️ В главное меню" }]
       ],
       resize_keyboard: true,
@@ -107,7 +128,21 @@ function genderKeyboard() {
   return {
     reply_markup: {
       keyboard: [
-        [{ text: "Мужчина" }, { text: "Женщина" }, { text: "Унисекс" }],
+        [{ text: "Мужчина" }, { text: "Женщина" }],
+        [{ text: "⬅️ В главное меню" }]
+      ],
+      resize_keyboard: true,
+      one_time_keyboard: true
+    }
+  };
+}
+
+function pairTypeKeyboard() {
+  return {
+    reply_markup: {
+      keyboard: [
+        [{ text: "Парень — парень" }, { text: "Парень — девушка" }],
+        [{ text: "Девушка — девушка" }],
         [{ text: "⬅️ В главное меню" }]
       ],
       resize_keyboard: true,
@@ -153,7 +188,9 @@ module.exports = {
   adminKeyboard,
   getBaseKeyboard,
   itemTypeKeyboard,
+  peopleModeKeyboard,
   genderKeyboard,
+  pairTypeKeyboard,
   poseKeyboard,
   backgroundKeyboard
 };

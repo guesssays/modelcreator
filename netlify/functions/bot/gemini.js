@@ -60,39 +60,107 @@ async function generateImageWithGemini(prompt, referenceImageBuffer) {
   return Buffer.from(imageBase64, "base64");
 }
 
+// --- Маппинги значений из бота в английский текст ---
+
+function mapItemType(item) {
+  switch (item) {
+    case "Худи": return "hoodie";
+    case "Свитшот": return "sweatshirt";
+    case "Футболка": return "t-shirt";
+    case "Куртка": return "jacket";
+    case "Пальто": return "coat";
+    case "Жилет": return "vest";
+    case "Штаны": return "pants";
+    case "Джинсы": return "jeans";
+    case "Шорты": return "shorts";
+    case "Платье": return "dress";
+    case "Юбка": return "skirt";
+    case "Костюм": return "suit";
+    case "Обувь": return "shoes";
+    case "Комплект": return "coordinated outfit set";
+    case "Аксессуары": return "fashion accessories";
+    default:
+      return item || "clothing item";
+  }
+}
+
+function mapPose(pose) {
+  switch (pose) {
+    case "Стоя, полный рост":
+      return "standing full-body pose";
+    case "По пояс":
+      return "waist-up pose";
+    case "В движении":
+      return "dynamic walking pose";
+    case "Сидя":
+      return "seated pose";
+    default:
+      return "natural pose";
+  }
+}
+
+function mapBackground(bg) {
+  switch (bg) {
+    case "Чистый студийный фон":
+      return "minimal clean studio background";
+    case "Улица города":
+      return "modern city street background";
+    case "Интерьер (комната)":
+      return "cozy interior room background";
+    case "Подиум / фэшн-съёмка":
+      return "fashion runway / editorial background";
+    default:
+      return "simple neutral background";
+  }
+}
+
 // Сборка промпта
 function buildPromptFromSession(session) {
   const t = session.tmp || {};
 
-  const genderText =
-    t.gender === "Мужчина"
-      ? "a male fashion model"
-      : t.gender === "Женщина"
-      ? "a female fashion model"
-      : "a unisex fashion model";
-
+  const peopleMode = t.peopleMode === "pair" ? "pair" : "single";
   const ageText = t.age || "young adult";
-  const poseText = t.pose || "standing";
 
-  const bgText =
-    t.background === "Чистый студийный фон"
-      ? "minimal clean studio background"
-      : t.background === "Улица города"
-      ? "modern city street background"
-      : t.background === "Интерьер (комната)"
-      ? "cozy interior room background"
-      : t.background === "Подиум / фэшн-съёмка"
-      ? "fashion runway / editorial background"
-      : "simple neutral background";
+  let subjectText;
+  if (peopleMode === "pair") {
+    const pair = t.pairType || "Парень — девушка";
+    const lower = pair.toLowerCase();
+    if (lower.includes("парень") && lower.includes("девушка")) {
+      subjectText = "a fashion couple: one male and one female model";
+    } else if (lower.includes("парень")) {
+      subjectText = "two male fashion models";
+    } else if (lower.includes("девушка")) {
+      subjectText = "two female fashion models";
+    } else {
+      subjectText = "two fashion models";
+    }
+  } else {
+    if (t.gender === "Мужчина") {
+      subjectText = "a male fashion model";
+    } else if (t.gender === "Женщина") {
+      subjectText = "a female fashion model";
+    } else {
+      subjectText = "a fashion model";
+    }
+  }
 
-  const itemType = t.itemType || "clothing item";
+  const itemText = mapItemType(t.itemType || "clothing item");
+  const poseText = mapPose(t.pose);
+  const bgText = mapBackground(t.background);
+
+  const firstLine =
+    peopleMode === "pair"
+      ? `A photorealistic vertical photo of ${subjectText}, ${ageText}, both wearing the reference ${itemText}.`
+      : `A photorealistic vertical portrait of ${subjectText}, ${ageText}, wearing the reference ${itemText}.`;
+
+  const subjectPronoun = peopleMode === "pair" ? "models are" : "model is";
 
   const prompt = `
-A photorealistic portrait of ${genderText}, ${ageText}, wearing the reference ${itemType}.
-The model is in a ${poseText} pose, showing how the clothes fit on the body.
+${firstLine}
+The ${subjectPronoun} in a ${poseText}, clearly showing how the clothes fit on the body.
 Scene: ${bgText}.
-Soft professional fashion lighting, high-quality editorial photography, Instagram-ready, vertical format.
-Clothing and folds must follow the reference garment.
+Soft professional fashion lighting, high-quality editorial photography, Instagram-ready 4:5 format.
+Clothing, fit and fabric folds must follow the reference garment exactly.
 `.trim();
 
   return prompt;

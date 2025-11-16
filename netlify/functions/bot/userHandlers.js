@@ -4,6 +4,7 @@ const {
   getSession,
   getShop,
   createShop,
+  deleteShop,
   ensureDailyCounters,
   getDailyLimitForPlan,
   TRIAL_CREDITS
@@ -13,7 +14,9 @@ const {
   getBaseKeyboard,
   registrationKeyboard,
   itemTypeKeyboard,
+  peopleModeKeyboard,
   genderKeyboard,
+  pairTypeKeyboard,
   poseKeyboard,
   backgroundKeyboard
 } = require("./keyboards");
@@ -173,14 +176,15 @@ async function handleStartGeneration(chatId) {
     return;
   }
 
-  session.step = "await_photo";
-  session.tmp = {};
-  await sendMessage(
-    chatId,
-    "Отправьте фото вещи (например, худи, куртка, штаны и т.п.). Лучше всего — в хорошем освещении.",
-    {}
-  );
+session.step = "await_photo";
+session.tmp = {};
+await sendMessage(
+  chatId,
+  "Отправьте фото вещи (например, худи, куртка, штаны и т.п.). Лучше всего — в хорошем освещении, на чистом однотонном фоне без посторонних предметов и надписей вокруг, надписи могут быть только на самой одежде. Вещь не должна быть на человеке — сфотографируйте её на вешалке, манекене или аккуратно разложенной.",
+  {}
+);
 }
+
 
 // Фото
 async function handleIncomingPhoto(chatId, message) {
@@ -240,7 +244,7 @@ async function handleTextMessage(chatId, text) {
     return;
   }
 
-  // Команды
+  // Команды / базовые кнопки
   if (text === "/start") {
     await handleStart(chatId);
     return;
@@ -259,6 +263,75 @@ async function handleTextMessage(chatId, text) {
   }
   if (text === "🏬 Мой магазин") {
     await handleMyShop(chatId);
+    return;
+  }
+
+  if (text === "➕ Новый магазин") {
+    const shop = getShop(chatId);
+    session.step = "await_shop_name";
+    session.tmp = {};
+    const prefix = shop
+      ? `Сейчас у вас уже есть магазин «${shop.name}».\nНовый магазин заменит текущий в этом аккаунте.\n\n`
+      : "";
+    await sendMessage(
+      chatId,
+      `${prefix}Напишите название нового магазина одежды:`,
+      registrationKeyboard()
+    );
+    return;
+  }
+
+  if (text === "🗑 Удалить магазин") {
+    const shop = getShop(chatId);
+    if (!shop) {
+      await sendMessage(
+        chatId,
+        "У вас ещё нет зарегистрированного магазина.",
+        getBaseKeyboard(chatId)
+      );
+      return;
+    }
+    session.step = "confirm_delete_shop";
+    session.tmp = {};
+    await sendMessage(
+      chatId,
+      `Вы уверены, что хотите удалить магазин «${shop.name}»?\n\nНажмите «✅ Да, удалить» или «❌ Отмена».`,
+      {
+        reply_markup: {
+          keyboard: [
+            [{ text: "✅ Да, удалить" }],
+            [{ text: "❌ Отмена" }]
+          ],
+          resize_keyboard: true
+        }
+      }
+    );
+    return;
+  }
+
+  // Подтверждение удаления магазина
+  if (session.step === "confirm_delete_shop") {
+    if (text === "✅ Да, удалить") {
+      const ok = deleteShop(chatId);
+      session.step = "idle";
+      session.tmp = {};
+      await sendMessage(
+        chatId,
+        ok
+          ? "Магазин удалён. Вы можете зарегистрировать новый, нажав /start."
+          : "Магазин не найден.",
+        getBaseKeyboard(chatId)
+      );
+      return;
+    }
+    // Любой другой ответ — отмена
+    session.step = "idle";
+    session.tmp = {};
+    await sendMessage(
+      chatId,
+      "Удаление отменено.",
+      getBaseKeyboard(chatId)
+    );
     return;
   }
 
@@ -334,12 +407,45 @@ async function handleTextMessage(chatId, text) {
   // === Сценарий генерации ===
   if (session.step === "await_item_type") {
     session.tmp.itemType = text;
-    session.step = "await_gender";
+    session.step = "await_people_mode";
 
     await sendMessage(
       chatId,
-      "Кто будет моделью?",
-      genderKeyboard()
+      "Выберите формат съёмки:",
+      peopleModeKeyboard()
+    );
+    return;
+  }
+
+  if (session.step === "await_people_mode") {
+    if (text === "Один человек") {
+      session.tmp.peopleMode = "single";
+      session.step = "await_gender";
+
+      await sendMessage(
+        chatId,
+        "Кто будет моделью?",
+        genderKeyboard()
+      );
+      return;
+    }
+
+    if (text === "Пара") {
+      session.tmp.peopleMode = "pair";
+      session.step = "await_pair_type";
+
+      await sendMessage(
+        chatId,
+        "Какую пару показать?",
+        pairTypeKeyboard()
+      );
+      return;
+    }
+
+    await sendMessage(
+      chatId,
+      "Пожалуйста, выберите вариант на клавиатуре: «Один человек» или «Пара».",
+      peopleModeKeyboard()
     );
     return;
   }
@@ -351,6 +457,28 @@ async function handleTextMessage(chatId, text) {
     await sendMessage(
       chatId,
       "Укажи возраст модели (например: 18-25, 25-35):",
+      {
+        reply_markup: {
+          keyboard: [
+            [{ text: "18-25" }, { text: "25-35" }],
+            [{ text: "35-45" }, { text: "45+" }],
+            [{ text: "⬅️ В главное меню" }]
+          ],
+          resize_keyboard: true,
+          one_time_keyboard: true
+        }
+      }
+    );
+    return;
+  }
+
+  if (session.step === "await_pair_type") {
+    session.tmp.pairType = text;
+    session.step = "await_age";
+
+    await sendMessage(
+      chatId,
+      "Укажи возраст моделей (например: 18-25, 25-35):",
       {
         reply_markup: {
           keyboard: [

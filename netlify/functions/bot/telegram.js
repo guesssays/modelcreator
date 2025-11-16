@@ -16,6 +16,24 @@ async function sendMessage(chatId, text, extra = {}) {
   });
 }
 
+// Ответ на callback_query (inline-кнопки)
+async function answerCallback(callbackQueryId, text = null, showAlert = false) {
+  if (!callbackQueryId) return;
+
+  const payload = {
+    callback_query_id: callbackQueryId
+  };
+
+  if (text) payload.text = text;
+  if (showAlert) payload.show_alert = true;
+
+  await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
 // Отправка фото (Buffer)
 async function sendPhoto(chatId, buffer, caption = "") {
   const formData = new FormData();
@@ -47,6 +65,7 @@ async function downloadTelegramFile(fileId) {
 
 module.exports = {
   sendMessage,
+  answerCallback,
   sendPhoto,
   downloadTelegramFile
 };
