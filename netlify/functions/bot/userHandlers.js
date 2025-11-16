@@ -1,4 +1,3 @@
-// bot/userHandlers.js
 const { ADMIN_CHAT_ID, COOLDOWN_MS } = require("./config");
 const {
   getSession,
@@ -18,7 +17,8 @@ const {
   genderKeyboard,
   pairTypeKeyboard,
   poseKeyboard,
-  backgroundKeyboard
+  backgroundKeyboard,
+  myShopKeyboard
 } = require("./keyboards");
 const { TARIFF_TEXT, HELP_TEXT } = require("./texts");
 const { generateImageWithGemini, buildPromptFromSession } = require("./gemini");
@@ -109,7 +109,8 @@ Instagram/Telegram: ${shop.instagram || "—"}
 Дата регистрации: ${shop.createdAt.split("T")[0]}
 `.trim();
 
-  await sendMessage(chatId, stats, getBaseKeyboard(chatId));
+  // Показываем специальную клаву "раздела" Мой магазин с кнопкой удаления
+  await sendMessage(chatId, stats, myShopKeyboard());
 }
 
 async function handleTariffs(chatId) {
@@ -176,15 +177,14 @@ async function handleStartGeneration(chatId) {
     return;
   }
 
-session.step = "await_photo";
-session.tmp = {};
-await sendMessage(
-  chatId,
-  "Отправьте фото вещи (например, худи, куртка, штаны и т.п.). Лучше всего — в хорошем освещении, на чистом однотонном фоне без посторонних предметов и надписей вокруг, надписи могут быть только на самой одежде. Вещь не должна быть на человеке — сфотографируйте её на вешалке, манекене или аккуратно разложенной.",
-  {}
-);
+  session.step = "await_photo";
+  session.tmp = {};
+  await sendMessage(
+    chatId,
+    "Отправьте фото вещи (например, худи, куртка, штаны и т.п.). Лучше всего — в хорошем освещении, на чистом однотонном фоне без посторонних предметов и надписей вокруг, надписи могут быть только на самой одежде. Вещь не должна быть на человеке — сфотографируйте её на вешалке, манекене или аккуратно разложенной.",
+    {}
+  );
 }
-
 
 // Фото
 async function handleIncomingPhoto(chatId, message) {
@@ -266,21 +266,7 @@ async function handleTextMessage(chatId, text) {
     return;
   }
 
-  if (text === "➕ Новый магазин") {
-    const shop = getShop(chatId);
-    session.step = "await_shop_name";
-    session.tmp = {};
-    const prefix = shop
-      ? `Сейчас у вас уже есть магазин «${shop.name}».\nНовый магазин заменит текущий в этом аккаунте.\n\n`
-      : "";
-    await sendMessage(
-      chatId,
-      `${prefix}Напишите название нового магазина одежды:`,
-      registrationKeyboard()
-    );
-    return;
-  }
-
+  // Удаление магазина (кнопка внутри раздела "Мой магазин")
   if (text === "🗑 Удалить магазин") {
     const shop = getShop(chatId);
     if (!shop) {
@@ -313,17 +299,27 @@ async function handleTextMessage(chatId, text) {
   if (session.step === "confirm_delete_shop") {
     if (text === "✅ Да, удалить") {
       const ok = deleteShop(chatId);
-      session.step = "idle";
-      session.tmp = {};
-      await sendMessage(
-        chatId,
-        ok
-          ? "Магазин удалён. Вы можете зарегистрировать новый, нажав /start."
-          : "Магазин не найден.",
-        getBaseKeyboard(chatId)
-      );
+      if (ok) {
+        // Сразу предлагаем создать новый
+        session.step = "await_shop_name";
+        session.tmp = {};
+        await sendMessage(
+          chatId,
+          "Магазин удалён.\n\nДавайте создадим новый магазин.\nНапишите название вашего магазина одежды:",
+          registrationKeyboard()
+        );
+      } else {
+        session.step = "idle";
+        session.tmp = {};
+        await sendMessage(
+          chatId,
+          "Магазин не найден.",
+          getBaseKeyboard(chatId)
+        );
+      }
       return;
     }
+
     // Любой другой ответ — отмена
     session.step = "idle";
     session.tmp = {};

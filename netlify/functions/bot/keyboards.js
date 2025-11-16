@@ -1,4 +1,3 @@
-// bot/keyboards.js
 const { ADMIN_CHAT_ID } = require("./config");
 const { getShop } = require("./store");
 
@@ -40,7 +39,7 @@ function blockedKeyboard() {
   };
 }
 
-// Активный магазин
+// Активный магазин — главная клавиатура (без удаления)
 function activeShopKeyboard() {
   return {
     reply_markup: {
@@ -49,12 +48,22 @@ function activeShopKeyboard() {
           { text: "🎨 Генерировать" },
           { text: "🏬 Мой магазин" }
         ],
-        [
-          { text: "➕ Новый магазин" },
-          { text: "🗑 Удалить магазин" }
-        ],
         [{ text: "💳 Тарифы и цены" }],
         [{ text: "ℹ️ Помощь" }]
+      ],
+      resize_keyboard: true
+    }
+  };
+}
+
+// Клавиатура внутри раздела "Мой магазин"
+function myShopKeyboard() {
+  return {
+    reply_markup: {
+      keyboard: [
+        [{ text: "🎨 Генерировать" }],
+        [{ text: "🗑 Удалить магазин" }],
+        [{ text: "⬅️ В главное меню" }]
       ],
       resize_keyboard: true
     }
@@ -185,6 +194,7 @@ module.exports = {
   pendingKeyboard,
   blockedKeyboard,
   activeShopKeyboard,
+  myShopKeyboard,
   adminKeyboard,
   getBaseKeyboard,
   itemTypeKeyboard,

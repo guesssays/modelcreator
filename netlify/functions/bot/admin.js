@@ -236,21 +236,21 @@ async function handleAdminCommand(chatId, text) {
   }
 }
 
-// обработка callback_data от inline-кнопок
+// обработка callback_data от inline-кнопок администратора
 async function handleAdminCallback(fromId, data, callbackId) {
   if (!data) return;
 
   if (data.startsWith("approve:")) {
     const targetId = data.split(":")[1];
     await approveShop(fromId, targetId);
-    await answerCallback(callbackId);
+    if (callbackId) await answerCallback(callbackId);
     return;
   }
 
   if (data.startsWith("reject:")) {
     const targetId = data.split(":")[1];
     await rejectShop(fromId, targetId);
-    await answerCallback(callbackId);
+    if (callbackId) await answerCallback(callbackId);
     return;
   }
 }

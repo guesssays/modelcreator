@@ -16,14 +16,13 @@ async function sendMessage(chatId, text, extra = {}) {
   });
 }
 
-// Ответ на callback_query (inline-кнопки)
-async function answerCallback(callbackQueryId, text = null, showAlert = false) {
+// Ответ на callback_query (inline кнопки)
+async function answerCallback(callbackQueryId, text = "", showAlert = false) {
   if (!callbackQueryId) return;
 
   const payload = {
     callback_query_id: callbackQueryId
   };
-
   if (text) payload.text = text;
   if (showAlert) payload.show_alert = true;
 

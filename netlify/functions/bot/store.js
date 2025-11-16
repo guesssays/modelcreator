@@ -1,4 +1,3 @@
-// bot/store.js
 const {
   TRIAL_CREDITS,
   DAILY_LIMIT_BY_PLAN,
@@ -6,7 +5,7 @@ const {
 } = require("./config");
 
 const sessions = {}; // состояния диалогов по chatId
-const shops = {};    // магазины по chatId (по одному магазину на аккаунт Telegram)
+const shops = {};    // магазины по chatId
 
 function getToday() {
   return new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
@@ -53,11 +52,10 @@ function createShop(chatId, { name, instagram, contact }) {
   return shop;
 }
 
-// Удалить магазин по chatId
 function deleteShop(chatId) {
   if (shops[chatId]) {
+    console.log("Shop deleted:", shops[chatId]);
     delete shops[chatId];
-    console.log("Shop deleted for chatId:", chatId);
     return true;
   }
   return false;
