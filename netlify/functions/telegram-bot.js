@@ -21,20 +21,76 @@ if (!GEMINI_API_KEY) {
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
 const TELEGRAM_FILE_API = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}`;
 
-// Простенькие сессии в памяти (MVP).
-// Для продакшена лучше вынести в внешнюю БД.
-const sessions = {};
+// === Простенькие in-memory-хранилища (MVP) ===
+// Для продакшена нужно вынести в внешнюю БД.
 
-// Получить / создать сессию по chatId
+const sessions = {}; // состояния диалогов по chatId
+
+// магазины (B2B-клиенты), ключ — chatId
+const shops = {};
+
+// Настройки кредитов/лимитов
+const TRIAL_CREDITS = 10;
+const DAILY_LIMIT_BY_PLAN = {
+  trial: 20,
+  start: 100,
+  pro: 300,
+  max: 1000
+};
+const DEFAULT_DAILY_LIMIT = 20;
+const COOLDOWN_MS = 10_000; // 10 секунд между генерациями
+
+// === helpers для дат / магазинов ===
+
+function getToday() {
+  return new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+}
+
 function getSession(chatId) {
   if (!sessions[chatId]) {
     sessions[chatId] = {
       step: "idle",
-      tmp: {},
-      freeCredits: 3 // кол-во пробных генераций
+      tmp: {}
     };
   }
   return sessions[chatId];
+}
+
+function getShop(chatId) {
+  return shops[chatId] || null;
+}
+
+function createShop(chatId, { name, instagram, contact }) {
+  const today = getToday();
+  const shop = {
+    id: String(chatId),
+    chatId,
+    name,
+    instagram,
+    contact,
+    plan: "trial",
+    creditsTotal: TRIAL_CREDITS,
+    creditsLeft: TRIAL_CREDITS,
+    generatedToday: 0,
+    generatedTodayDate: today,
+    lastGeneratedAt: 0,
+    createdAt: new Date().toISOString()
+  };
+  shops[chatId] = shop;
+  console.log("Shop created:", shop);
+  return shop;
+}
+
+function ensureDailyCounters(shop) {
+  const today = getToday();
+  if (shop.generatedTodayDate !== today) {
+    shop.generatedTodayDate = today;
+    shop.generatedToday = 0;
+  }
+}
+
+function getDailyLimitForPlan(plan) {
+  return DAILY_LIMIT_BY_PLAN[plan] || DEFAULT_DAILY_LIMIT;
 }
 
 // === Утилиты Telegram ===
@@ -88,7 +144,7 @@ async function downloadTelegramFile(fileId) {
 // === Gemini ===
 //
 // Генерация картинки по промпту + референс-фото вещи (из Telegram)
-// Используем REST API gemini-2.5-flash-image (text+image -> image). :contentReference[oaicite:0]{index=0}
+// Используем REST API gemini-2.5-flash-image (text+image -> image).
 async function generateImageWithGemini(prompt, referenceImageBuffer) {
   const base64Image = referenceImageBuffer.toString("base64");
 
@@ -222,20 +278,25 @@ function backgroundKeyboard() {
   };
 }
 
-// Текст по тарифам (пока просто описание, без оплаты)
+// Текст по тарифам (пока просто описание, без реальной оплаты)
 const TARIFF_TEXT = `
 💳 Тарифы и цены (пример)
 
-🔹 Free — 3 генерации в месяц, базовые настройки.
-🔹 Standard — 100 генераций в месяц, приоритетная очередь.
+🔹 Trial — 10 генераций, чтобы протестировать сервис.
+🔹 Start — 100 генераций в месяц.
 🔹 Pro — 500+ генераций, персональные стили под ваш магазин.
 
-Оплату и подключение тарифа можно согласовать с владельцем бота.
+Детали подключения тарифа и оплату можно согласовать с владельцем бота.
 `.trim();
 
 // Помощь
 const HELP_TEXT = `
 Этот бот помогает владельцам магазинов одежды генерировать фото моделей с вашей одеждой.
+
+Перед началом работы бот попросит:
+• название магазина
+• ссылку на Instagram (по желанию)
+• контакт для связи
 
 Как пользоваться:
 1️⃣ Нажмите "🎨 Попробовать генерацию".
@@ -274,7 +335,6 @@ function buildPromptFromSession(session) {
 
   const itemType = t.itemType || "clothing item";
 
-  // Промпт в духе гайдов Gemini: описываем сцену, а не кидаем просто ключевые слова. :contentReference[oaicite:1]{index=1}
   const prompt = `
 A photorealistic portrait of ${genderText}, ${ageText}, wearing the reference ${itemType}.
 The model is in a ${poseText} pose, showing how the clothes fit on the body.
@@ -289,13 +349,27 @@ Clothing and folds must follow the reference garment.
 // Обработка команды /start
 async function handleStart(chatId) {
   const session = getSession(chatId);
-  session.step = "idle";
+  const shop = getShop(chatId);
 
-  await sendMessage(
-    chatId,
-    "Привет! 👋 Я бот, который помогает владельцам магазинов одежды генерировать фото моделей с вашей одеждой.\n\nНажми «🎨 Попробовать генерацию», чтобы сделать пробные картинки.",
-    mainMenuKeyboard()
-  );
+  if (!shop) {
+    // Регистрация нового магазина
+    session.step = "await_shop_name";
+    session.tmp = {};
+    await sendMessage(
+      chatId,
+      "Привет! 👋 Я бот, который генерирует профессиональные фото моделей с вашей одеждой.\n\nДавайте начнём с регистрации.\n\nНапишите название вашего магазина одежды:"
+    );
+  } else {
+    // Уже зарегистрированный магазин
+    session.step = "idle";
+    session.tmp = {};
+    ensureDailyCounters(shop);
+    await sendMessage(
+      chatId,
+      `Снова привет, ${shop.name}! 👋\nУ вашего магазина осталось генераций: ${shop.creditsLeft}\n\nВыберите действие в меню ниже.`,
+      mainMenuKeyboard()
+    );
+  }
 }
 
 // Показ тарифов
@@ -311,14 +385,38 @@ async function handleHelp(chatId) {
 // Запуск сценария генерации
 async function handleStartGeneration(chatId) {
   const session = getSession(chatId);
+  const shop = getShop(chatId);
 
-  if (session.freeCredits <= 0) {
+  if (!shop) {
+    // Если магазин ещё не зарегистрирован — уводим в регистрацию
+    session.step = "await_shop_name";
+    session.tmp = {};
     await sendMessage(
       chatId,
-      "У вас закончились пробные генерации. Посмотрите тарифы 👇",
+      "Сначала зарегистрируйте магазин.\n\nНапишите название вашего магазина одежды:"
+    );
+    return;
+  }
+
+  ensureDailyCounters(shop);
+  const dailyLimit = getDailyLimitForPlan(shop.plan);
+
+  if (shop.creditsLeft <= 0) {
+    await sendMessage(
+      chatId,
+      "У вашего магазина закончились генерации. Посмотрите тарифы и свяжитесь с владельцем бота для пополнения.",
       mainMenuKeyboard()
     );
     await handleTariffs(chatId);
+    return;
+  }
+
+  if (shop.generatedToday >= dailyLimit) {
+    await sendMessage(
+      chatId,
+      "На сегодня лимит генераций для вашего тарифа исчерпан. Попробуйте завтра или обновите тариф.",
+      mainMenuKeyboard()
+    );
     return;
   }
 
@@ -393,6 +491,54 @@ async function handleTextMessage(chatId, text) {
     return;
   }
 
+  // === Регистрация магазина ===
+
+  if (session.step === "await_shop_name") {
+    session.tmp.shopName = text;
+    session.step = "await_shop_instagram";
+
+    await sendMessage(
+      chatId,
+      "Отлично! Вставьте ссылку на Instagram вашего магазина (или напишите «нет», если нет профиля):"
+    );
+    return;
+  }
+
+  if (session.step === "await_shop_instagram") {
+    session.tmp.shopInstagram = text;
+    session.step = "await_shop_contact";
+
+    await sendMessage(
+      chatId,
+      "Укажите контакт для связи (телеграм @username или номер телефона):"
+    );
+    return;
+  }
+
+  if (session.step === "await_shop_contact") {
+    session.tmp.shopContact = text;
+
+    const shopData = {
+      name: session.tmp.shopName || "Без названия",
+      instagram: session.tmp.shopInstagram || "",
+      contact: session.tmp.shopContact || ""
+    };
+
+    const shop = createShop(chatId, shopData);
+
+    session.step = "idle";
+    session.tmp = {};
+
+    await sendMessage(
+      chatId,
+      `Готово! Мы зарегистрировали ваш магазин «${shop.name}».\nВам доступно ${shop.creditsLeft} пробных генераций изображений.`,
+      mainMenuKeyboard()
+    );
+    return;
+  }
+
+  // === Сценарий генерации ===
+
   // Шаг: тип вещи
   if (session.step === "await_item_type") {
     session.tmp.itemType = text;
@@ -458,6 +604,56 @@ async function handleTextMessage(chatId, text) {
   // Шаг: фон -> запускаем генерацию
   if (session.step === "await_background") {
     session.tmp.background = text;
+
+    const shop = getShop(chatId);
+    if (!shop) {
+      // На всякий случай, если память "слетела"
+      session.step = "await_shop_name";
+      session.tmp = {};
+      await sendMessage(
+        chatId,
+        "Кажется, данные магазина не найдены. Давайте зарегистрируемся заново.\nНапишите название вашего магазина одежды:"
+      );
+      return;
+    }
+
+    ensureDailyCounters(shop);
+    const dailyLimit = getDailyLimitForPlan(shop.plan);
+
+    if (shop.creditsLeft <= 0) {
+      session.step = "idle";
+      await sendMessage(
+        chatId,
+        "У вашего магазина закончились генерации. Посмотрите тарифы и свяжитесь с владельцем бота для пополнения.",
+        mainMenuKeyboard()
+      );
+      await handleTariffs(chatId);
+      return;
+    }
+
+    if (shop.generatedToday >= dailyLimit) {
+      session.step = "idle";
+      await sendMessage(
+        chatId,
+        "На сегодня лимит генераций для вашего тарифа исчерпан. Попробуйте завтра или обновите тариф.",
+        mainMenuKeyboard()
+      );
+      return;
+    }
+
+    const now = Date.now();
+    if (shop.lastGeneratedAt && now - shop.lastGeneratedAt < COOLDOWN_MS) {
+      const waitMs = COOLDOWN_MS - (now - shop.lastGeneratedAt);
+      const waitSec = Math.ceil(waitMs / 1000);
+      session.step = "idle";
+      await sendMessage(
+        chatId,
+        `Пожалуйста, подождите ещё ${waitSec} сек перед следующей генерацией.`,
+        mainMenuKeyboard()
+      );
+      return;
+    }
+
     session.step = "generating";
 
     await sendMessage(
@@ -475,27 +671,32 @@ async function handleTextMessage(chatId, text) {
         photoBuffer
       );
 
+      // Успешная генерация — списываем кредиты
+      shop.creditsLeft = Math.max(0, shop.creditsLeft - 1);
+      ensureDailyCounters(shop);
+      shop.generatedToday += 1;
+      shop.lastGeneratedAt = Date.now();
+
       await sendPhoto(
         chatId,
         imageBuffer,
         "Вот сгенерированная модель с вашей вещью 🎨"
       );
 
-      session.freeCredits = Math.max(0, (session.freeCredits || 0) - 1);
       session.step = "idle";
       session.tmp = {};
 
-      if (session.freeCredits <= 0) {
+      if (shop.creditsLeft <= 0) {
         await sendMessage(
           chatId,
-          "Пробные генерации закончились. Посмотрите тарифы 👇",
+          "У вашего магазина закончились генерации. Посмотрите тарифы 👇",
           mainMenuKeyboard()
         );
         await handleTariffs(chatId);
       } else {
         await sendMessage(
           chatId,
-          `У вас осталось пробных генераций: ${session.freeCredits}`,
+          `У вашего магазина осталось генераций: ${shop.creditsLeft}`,
           mainMenuKeyboard()
         );
       }
@@ -532,7 +733,9 @@ exports.handler = async function (event, context) {
 
     // Простейшая защита по секрету (опционально)
     if (WEBHOOK_SECRET) {
-      const url = new URL(event.rawUrl || event.headers["x-original-url"] || "");
+      const url = new URL(
+        event.rawUrl || event.headers["x-original-url"] || ""
+      );
       const secretFromQuery = url.searchParams.get("secret");
       if (secretFromQuery !== WEBHOOK_SECRET) {
         return { statusCode: 403, body: "Forbidden" };
