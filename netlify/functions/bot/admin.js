@@ -31,6 +31,8 @@ Chat ID: ${shop.chatId}
 Выберите действие с помощью кнопок ниже.
 `.trim();
 
+  // ВАЖНО: тут ТОЛЬКО inline_keyboard.
+  // Нельзя одновременно передать и inline_keyboard, и обычный keyboard в одном reply_markup.
   await sendMessage(ADMIN_CHAT_ID, text, {
     reply_markup: {
       inline_keyboard: [
@@ -45,9 +47,11 @@ Chat ID: ${shop.chatId}
           }
         ]
       ]
-    },
-    ...adminKeyboard() // оставляем обычную клавиатуру панели тоже
+    }
   });
+
+  // Если хочешь, можно вторым сообщением прислать панель:
+  // await sendMessage(ADMIN_CHAT_ID, "Панель администратора:", adminKeyboard());
 }
 
 // общая функция апрува
@@ -244,7 +248,8 @@ async function handleAdminCallback(fromId, data) {
   if (data.startsWith("approve:")) {
     const targetId = data.split(":")[1];
     await approveShop(fromId, targetId);
-    await answerCallback(); // просто закрыть "часики"
+    // если answerCallback() у тебя принимает id — тут нужно передавать его из handler'а
+    await answerCallback();
     return;
   }
 

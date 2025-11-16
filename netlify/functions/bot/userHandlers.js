@@ -83,7 +83,7 @@ async function handleMyShop(chatId) {
 
   const statusText =
     shop.status === "pending"
-      ? "⏳ Ожидает автоматической проверки системой"
+      ? "⏳ Ожидает проверки системой"
       : shop.status === "blocked"
       ? "⛔ Временно ограничен"
       : "✅ Активен";
@@ -323,7 +323,7 @@ async function handleTextMessage(chatId, text) {
 
     await sendMessage(
       chatId,
-      `Готово! Мы зарегистрировали ваш магазин «${shop.name}».\n\nЗаявка принята и отправлена на автоматическую проверку системой.\nПосле успешной проверки вы получите ${TRIAL_CREDITS} пробных генераций, и бот уведомит вас.`,
+      `Готово! Мы зарегистрировали ваш магазин «${shop.name}».\n\nЗаявка принята и отправлена на проверку.\nПосле успешной проверки вы получите ${TRIAL_CREDITS} пробных генераций, и бот уведомит вас.`,
       getBaseKeyboard(chatId)
     );
 
