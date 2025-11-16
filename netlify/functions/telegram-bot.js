@@ -6,15 +6,17 @@
 //  - TG_BOT_TOKEN        — токен бота из BotFather
 //  - GEMINI_API_KEY      — API ключ Gemini (Google AI Studio)
 //  - TELEGRAM_WEBHOOK_SECRET (опционально) — любая строка, если хочешь простую защиту
+//  - ADMIN_CHAT_ID       — chat_id телеграма админа (строка, как есть)
 //
 const TELEGRAM_TOKEN = process.env.TG_BOT_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || null;
+const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || null;
 
-if (!TELEGRAM_TOKEN) {
+if (! TELEGRAM_TOKEN) {
   console.error("TG_BOT_TOKEN is not set");
 }
-if (!GEMINI_API_KEY) {
+if (! GEMINI_API_KEY) {
   console.error("GEMINI_API_KEY is not set");
 }
 
@@ -57,9 +59,15 @@ function getSession(chatId) {
 }
 
 function getShop(chatId) {
-  return shops[chatId] || null;
+  const shop = shops[chatId] || null;
+  // старые записи без статуса считаем активными
+  if (shop && !shop.status) {
+    shop.status = "active";
+  }
+  return shop;
 }
 
+// Создаём магазин со статусом pending, без кредитов — ждём одобрения админа
 function createShop(chatId, { name, instagram, contact }) {
   const today = getToday();
   const shop = {
@@ -68,16 +76,17 @@ function createShop(chatId, { name, instagram, contact }) {
     name,
     instagram,
     contact,
-    plan: "trial",
-    creditsTotal: TRIAL_CREDITS,
-    creditsLeft: TRIAL_CREDITS,
+    status: "pending",      // pending | active | blocked
+    plan: "trial",          // пока всегда trial после активации
+    creditsTotal: 0,        // кредиты появятся после approve
+    creditsLeft: 0,
     generatedToday: 0,
     generatedTodayDate: today,
     lastGeneratedAt: 0,
     createdAt: new Date().toISOString()
   };
   shops[chatId] = shop;
-  console.log("Shop created:", shop);
+  console.log("Shop created (pending):", shop);
   return shop;
 }
 
@@ -139,6 +148,30 @@ async function downloadTelegramFile(fileId) {
   const fileRes = await fetch(`${TELEGRAM_FILE_API}/${filePath}`);
   const arrayBuffer = await fileRes.arrayBuffer();
   return Buffer.from(arrayBuffer);
+}
+
+// Уведомление админа о новом магазине
+async function notifyAdminNewShop(shop) {
+  if (!ADMIN_CHAT_ID) {
+    console.warn("ADMIN_CHAT_ID is not set, skipping admin notify");
+    return;
+  }
+  const text = `
+Новый магазин ожидает подтверждения:
+
+Название: ${shop.name}
+Instagram: ${shop.instagram || "—"}
+Контакт: ${shop.contact || "—"}
+Chat ID: ${shop.chatId}
+
+Чтобы выдать пробные генерации, отправьте:
+/approve ${shop.chatId}
+
+Чтобы отклонить или заблокировать:
+/reject ${shop.chatId}
+`.trim();
+
+  await sendMessage(ADMIN_CHAT_ID, text);
 }
 
 // === Gemini ===
@@ -282,7 +315,7 @@ function backgroundKeyboard() {
 const TARIFF_TEXT = `
 💳 Тарифы и цены (пример)
 
-🔹 Trial — 10 генераций, чтобы протестировать сервис.
+🔹 Trial — 10 генераций, чтобы протестировать сервис (после подтверждения админом).
 🔹 Start — 100 генераций в месяц.
 🔹 Pro — 500+ генераций, персональные стили под ваш магазин.
 
@@ -297,6 +330,8 @@ const HELP_TEXT = `
 • название магазина
 • ссылку на Instagram (по желанию)
 • контакт для связи
+
+После регистрации администратор проверит заявку и активирует пробные генерации.
 
 Как пользоваться:
 1️⃣ Нажмите "🎨 Попробовать генерацию".
@@ -364,6 +399,25 @@ async function handleStart(chatId) {
     session.step = "idle";
     session.tmp = {};
     ensureDailyCounters(shop);
+
+    if (shop.status === "pending") {
+      await sendMessage(
+        chatId,
+        `Снова привет, ${shop.name}! 👋\n\nВаша заявка на подключение отправлена администратору и находится на рассмотрении.\nПосле подтверждения вы получите 10 пробных генераций.\n\nЕсли нужно изменить данные магазина — напишите администратору.`,
+        mainMenuKeyboard()
+      );
+      return;
+    }
+
+    if (shop.status === "blocked") {
+      await sendMessage(
+        chatId,
+        `Снова привет, ${shop.name}.\n\nК сожалению, доступ к генерации для вашего магазина заблокирован. Свяжитесь с администратором для уточнения деталей.`,
+        mainMenuKeyboard()
+      );
+      return;
+    }
+
     await sendMessage(
       chatId,
       `Снова привет, ${shop.name}! 👋\nУ вашего магазина осталось генераций: ${shop.creditsLeft}\n\nВыберите действие в меню ниже.`,
@@ -394,6 +448,24 @@ async function handleStartGeneration(chatId) {
     await sendMessage(
       chatId,
       "Сначала зарегистрируйте магазин.\n\nНапишите название вашего магазина одежды:"
+    );
+    return;
+  }
+
+  if (shop.status === "pending") {
+    await sendMessage(
+      chatId,
+      "Ваша заявка ещё не подтверждена администратором.\nКак только её одобрят, вы получите 10 пробных генераций и сможете протестировать сервис.",
+      mainMenuKeyboard()
+    );
+    return;
+  }
+
+  if (shop.status === "blocked") {
+    await sendMessage(
+      chatId,
+      "Доступ к генерации для вашего магазина заблокирован. Свяжитесь с администратором, если считаете, что это ошибка.",
+      mainMenuKeyboard()
     );
     return;
   }
@@ -461,9 +533,105 @@ async function handleIncomingPhoto(chatId, message) {
   );
 }
 
+// === Админ-команды ===
+
+async function handleAdminCommand(chatId, text) {
+  // /approve <chatId>
+  if (text.startsWith("/approve ")) {
+    const parts = text.split(" ").filter(Boolean);
+    if (parts.length < 2) {
+      await sendMessage(chatId, "Использование: /approve <chatId>");
+      return;
+    }
+    const targetId = parts[1];
+    const shop = shops[targetId];
+    if (!shop) {
+      await sendMessage(chatId, `Магазин с chatId ${targetId} не найден.`);
+      return;
+    }
+
+    shop.status = "active";
+    shop.plan = "trial";
+    shop.creditsTotal = TRIAL_CREDITS;
+    shop.creditsLeft = TRIAL_CREDITS;
+    ensureDailyCounters(shop);
+
+    await sendMessage(
+      chatId,
+      `Магазин «${shop.name}» (chatId: ${shop.chatId}) одобрен. Выдано ${TRIAL_CREDITS} пробных генераций.`
+    );
+
+    // уведомляем сам магазин
+    await sendMessage(
+      shop.chatId,
+      `Ваша заявка одобрена! 🎉\nВам выдано ${TRIAL_CREDITS} пробных генераций. Нажмите «🎨 Попробовать генерацию», чтобы начать.`,
+      mainMenuKeyboard()
+    );
+    return;
+  }
+
+  // /reject <chatId>
+  if (text.startsWith("/reject ")) {
+    const parts = text.split(" ").filter(Boolean);
+    if (parts.length < 2) {
+      await sendMessage(chatId, "Использование: /reject <chatId>");
+      return;
+    }
+    const targetId = parts[1];
+    const shop = shops[targetId];
+    if (!shop) {
+      await sendMessage(chatId, `Магазин с chatId ${targetId} не найден.`);
+      return;
+    }
+
+    shop.status = "blocked";
+    shop.creditsTotal = 0;
+    shop.creditsLeft = 0;
+
+    await sendMessage(
+      chatId,
+      `Магазин «${shop.name}» (chatId: ${shop.chatId}) помечен как заблокированный.`
+    );
+
+    await sendMessage(
+      shop.chatId,
+      "К сожалению, ваша заявка на использование сервиса отклонена. Если вы считаете, что это ошибка — свяжитесь с администратором.",
+      mainMenuKeyboard()
+    );
+    return;
+  }
+
+  // /list_shops (простенький список)
+  if (text === "/list_shops") {
+    const all = Object.values(shops);
+    if (!all.length) {
+      await sendMessage(chatId, "Пока нет ни одного зарегистрированного магазина.");
+      return;
+    }
+    const lines = all
+      .slice(0, 30) // чтобы не захлебнуться
+      .map(
+        (s) =>
+          `• ${s.name} (chatId: ${s.chatId}, status: ${s.status}, credits: ${s.creditsLeft})`
+      );
+    await sendMessage(chatId, lines.join("\n"));
+    return;
+  }
+
+  // если это не админ-команда — просто игнорим в контексте админа
+}
+
 // Обработка текста в зависимости от step
 async function handleTextMessage(chatId, text) {
   const session = getSession(chatId);
+
+  // === Админ-команды (если chatId совпадает) ===
+  if (ADMIN_CHAT_ID && String(chatId) === String(ADMIN_CHAT_ID)) {
+    if (text.startsWith("/approve ") || text.startsWith("/reject ") || text === "/list_shops") {
+      await handleAdminCommand(chatId, text);
+      return;
+    }
+  }
 
   // Глобальная кнопка возврата
   if (text === "⬅️ В главное меню") {
@@ -531,9 +699,13 @@ async function handleTextMessage(chatId, text) {
 
     await sendMessage(
       chatId,
-      `Готово! Мы зарегистрировали ваш магазин «${shop.name}».\nВам доступно ${shop.creditsLeft} пробных генераций изображений.`,
+      `Готово! Мы зарегистрировали ваш магазин «${shop.name}».\n\nЗаявка отправлена администратору на проверку.\nПосле подтверждения вы получите ${TRIAL_CREDITS} пробных генераций, и бот уведомит вас.`,
       mainMenuKeyboard()
     );
+
+    // предупредим админа
+    await notifyAdminNewShop(shop);
+
     return;
   }
 
@@ -613,6 +785,26 @@ async function handleTextMessage(chatId, text) {
       await sendMessage(
         chatId,
         "Кажется, данные магазина не найдены. Давайте зарегистрируемся заново.\nНапишите название вашего магазина одежды:"
+      );
+      return;
+    }
+
+    if (shop.status === "pending") {
+      session.step = "idle";
+      await sendMessage(
+        chatId,
+        "Ваша заявка ещё не подтверждена администратором. После одобрения вы сможете запускать генерацию.",
+        mainMenuKeyboard()
+      );
+      return;
+    }
+
+    if (shop.status === "blocked") {
+      session.step = "idle";
+      await sendMessage(
+        chatId,
+        "Доступ к генерации для вашего магазина заблокирован. Свяжитесь с администратором.",
+        mainMenuKeyboard()
       );
       return;
     }
