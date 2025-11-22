@@ -9,10 +9,8 @@ const {
 const { getStore } = require("@netlify/blobs");
 
 // Хранилище Netlify Blobs (название можешь поменять)
-const blobStore = getStore("wrape-shops", {
-  siteID: process.env.BLOBS_SITE_ID,
-  token: process.env.BLOBS_TOKEN
-});
+const blobStore = getStore({ name: "wrape-shops" });
+
 
 
 const sessions = {}; // состояния диалогов по chatId (можно не сохранять, это временное)
