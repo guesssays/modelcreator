@@ -201,7 +201,7 @@ async function rejectShop(adminChatId, targetId) {
 // ================== ОБРАБОТКА ТЕКСТОВЫХ АДМИН-КОМАНД ==================
 
 async function handleAdminCommand(chatId, text) {
-  // Команды можно оставить как "резервный" способ
+  // /approve <chatId>
   if (text.startsWith("/approve ")) {
     const parts = text.split(" ").filter(Boolean);
     if (parts.length < 2) {
@@ -217,6 +217,7 @@ async function handleAdminCommand(chatId, text) {
     return;
   }
 
+  // /reject <chatId>
   if (text.startsWith("/reject ")) {
     const parts = text.split(" ").filter(Boolean);
     if (parts.length < 2) {
@@ -232,6 +233,7 @@ async function handleAdminCommand(chatId, text) {
     return;
   }
 
+  // /add_credits <chatId> <amount>
   if (text.startsWith("/add_credits ")) {
     const parts = text.split(" ").filter(Boolean);
     if (parts.length < 3) {
@@ -277,6 +279,7 @@ async function handleAdminCommand(chatId, text) {
     return;
   }
 
+  // /set_plan <chatId> <trial|start|pro|max>
   if (text.startsWith("/set_plan ")) {
     const parts = text.split(" ").filter(Boolean);
     if (parts.length < 3) {
@@ -322,7 +325,7 @@ async function handleAdminCommand(chatId, text) {
     return;
   }
 
-  // /list_shops — просто список, без кнопок
+  // /list_shops
   if (text === "/list_shops") {
     const all = await listAllShops();
     if (!all.length) {
@@ -343,7 +346,7 @@ async function handleAdminCommand(chatId, text) {
     return;
   }
 
-  // КНОПКИ ПАНЕЛИ
+  // ===== КНОПКИ АДМИН-ПАНЕЛИ =====
 
   if (text === "⏳ Ожидают подтверждения") {
     const arr = await listShopsByStatus("pending");
@@ -525,7 +528,7 @@ Chat ID: ${shop.chatId}
     return;
   }
 
-  // применить конкретный пакет
+  // применить конкретный пакет (старый сценарий, если админ жмёт "Начислить тариф")
   if (data.startsWith("pack:")) {
     const parts = data.split(":"); // ["pack", "<plan>", "<chatId>"]
     const plan = parts[1];
@@ -537,7 +540,6 @@ Chat ID: ${shop.chatId}
       return;
     }
 
-    // ставим план и начисляем кредиты
     let shop = await setShopPlan(targetId, plan);
     if (!shop) {
       if (callbackId) await answerCallback(callbackId, "Магазин не найден", true);
@@ -560,6 +562,71 @@ Chat ID: ${shop.chatId}
     );
 
     if (callbackId) await answerCallback(callbackId, "Тариф применён");
+    return;
+  }
+
+  // ===== НОВОЕ: подтверждение/отклонение оплаты по заявке из бота =====
+
+  // pay_confirm:<plan>:<chatId>
+  if (data.startsWith("pay_confirm:")) {
+    const parts = data.split(":");
+    const plan = parts[1];
+    const targetId = parts[2];
+
+    const pack = PACKS[plan];
+    if (!pack) {
+      if (callbackId) await answerCallback(callbackId, "Неизвестный тариф", true);
+      return;
+    }
+
+    let shop = await setShopPlan(targetId, plan);
+    if (!shop) {
+      if (callbackId) await answerCallback(callbackId, "Магазин не найден", true);
+      return;
+    }
+
+    shop = await addCreditsToShop(targetId, pack.credits);
+
+    await sendMessage(
+      fromId,
+      `Платёж подтверждён.\nТариф: ${pack.label}\nМагазин: «${shop.name}» (chatId: ${shop.chatId})\nНачислено ${pack.credits} генераций.\nТекущий баланс: ${shop.creditsLeft} кредитов.`,
+      adminKeyboard()
+    );
+
+    const kb = await getBaseKeyboard(shop.chatId);
+    await sendMessage(
+      shop.chatId,
+      `✅ Оплата подтверждена.\nВам подключён тариф: ${pack.label}.\nТекущий баланс: ${shop.creditsLeft} генераций.`,
+      kb
+    );
+
+    if (callbackId) await answerCallback(callbackId, "Оплата подтверждена");
+    return;
+  }
+
+  // pay_reject:<chatId>
+  if (data.startsWith("pay_reject:")) {
+    const targetId = data.split(":")[1];
+    const shop = await getShop(targetId);
+
+    if (shop) {
+      await sendMessage(
+        fromId,
+        `Платёж от магазина «${shop.name}» (chatId: ${shop.chatId}) отклонён.`,
+        adminKeyboard()
+      );
+
+      const kb = await getBaseKeyboard(shop.chatId);
+      await sendMessage(
+        shop.chatId,
+        "❌ Оплата не прошла проверку.\nПроверьте данные платежа или свяжитесь с администратором сервиса для уточнения.",
+        kb
+      );
+    } else {
+      await sendMessage(fromId, "Магазин не найден.", adminKeyboard());
+    }
+
+    if (callbackId) await answerCallback(callbackId, "Платёж отклонён");
     return;
   }
 }

@@ -62,9 +62,25 @@ async function downloadTelegramFile(fileId) {
   return Buffer.from(arrayBuffer);
 }
 
+// Переслать сообщение (для скриншота чека)
+async function forwardMessage(toChatId, fromChatId, messageId) {
+  const payload = {
+    chat_id: toChatId,
+    from_chat_id: fromChatId,
+    message_id: messageId
+  };
+
+  await fetch(`${TELEGRAM_API}/forwardMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
 module.exports = {
   sendMessage,
   answerCallback,
   sendPhoto,
-  downloadTelegramFile
+  downloadTelegramFile,
+  forwardMessage
 };

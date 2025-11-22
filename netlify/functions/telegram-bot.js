@@ -5,7 +5,8 @@ const { sendMessage } = require("./bot/telegram");
 const { getBaseKeyboard } = require("./bot/keyboards");
 const {
   handleIncomingPhoto,
-  handleTextMessage
+  handleTextMessage,
+  handleUserCallback
 } = require("./bot/userHandlers");
 const { handleAdminCallback } = require("./bot/admin");
 
@@ -45,6 +46,8 @@ exports.handler = async function (event, context) {
 
       if (ADMIN_CHAT_ID && String(fromId) === String(ADMIN_CHAT_ID)) {
         await handleAdminCallback(fromId, data, callbackId);
+      } else {
+        await handleUserCallback(fromId, data, callbackId);
       }
 
       return {

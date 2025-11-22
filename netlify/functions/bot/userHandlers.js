@@ -22,9 +22,15 @@ const {
   backgroundKeyboard,
   myShopKeyboard
 } = require("./keyboards");
-const { TARIFF_TEXT, HELP_TEXT } = require("./texts");
+const { TARIFF_TEXT, HELP_TEXT, TARIFF_PLAN_TEXTS } = require("./texts");
 const { generateImageWithGemini, buildPromptFromSession } = require("./gemini");
-const { sendMessage, sendPhoto, downloadTelegramFile } = require("./telegram");
+const {
+  sendMessage,
+  sendPhoto,
+  downloadTelegramFile,
+  forwardMessage,
+  answerCallback
+} = require("./telegram");
 const { notifyAdminNewShop, handleAdminCommand } = require("./admin");
 
 // /start
@@ -117,9 +123,15 @@ Instagram/Telegram: ${shop.instagram || "—"}
   await sendMessage(chatId, stats, myShopKeyboard());
 }
 
+// Тарифы — теперь с кнопкой "Выбрать тариф"
 async function handleTariffs(chatId) {
-  const kb = await getBaseKeyboard(chatId);
-  await sendMessage(chatId, TARIFF_TEXT, kb);
+  await sendMessage(chatId, TARIFF_TEXT, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "📌 Выбрать тариф", callback_data: "tariffs:select" }]
+      ]
+    }
+  });
 }
 
 async function handleHelp(chatId) {
@@ -210,6 +222,70 @@ async function handleStartGeneration(chatId) {
 async function handleIncomingPhoto(chatId, message) {
   const session = getSession(chatId);
 
+  // === ЧЕК ОПЛАТЫ (скриншот) ===
+  if (session.step === "await_payment_proof") {
+    const plan = session.tmp?.paymentPlan || "start";
+    const shop = await getShop(chatId);
+
+    if (!shop) {
+      session.step = "idle";
+      session.tmp = {};
+      const kb = await getBaseKeyboard(chatId);
+      await sendMessage(
+        chatId,
+        "Магазин не найден. Попробуйте ещё раз выбрать тариф через «💳 Тарифы и цены».",
+        kb
+      );
+      return;
+    }
+
+    if (!ADMIN_CHAT_ID) {
+      session.step = "idle";
+      session.tmp = {};
+      const kb = await getBaseKeyboard(chatId);
+      await sendMessage(
+        chatId,
+        "Сейчас приём платежей временно недоступен. Напишите администратору @dcoredanil.",
+        kb
+      );
+      return;
+    }
+
+    await sendMessage(
+      ADMIN_CHAT_ID,
+      `🧾 Новый платёж (скриншот)\n\nМагазин: ${shop.name}\nChat ID: ${shop.chatId}\nТариф: ${plan.toUpperCase()}\n\nНиже переслан скриншот чека.\n\nПодтвердить или отклонить платёж:`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "✅ Подтвердить оплату",
+                callback_data: `pay_confirm:${plan}:${shop.chatId}`
+              },
+              {
+                text: "❌ Отклонить",
+                callback_data: `pay_reject:${shop.chatId}`
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+    await forwardMessage(ADMIN_CHAT_ID, chatId, message.message_id);
+
+    session.step = "idle";
+    session.tmp = {};
+    const kb = await getBaseKeyboard(chatId);
+    await sendMessage(
+      chatId,
+      "Спасибо! Чек отправлен администратору. После проверки мы начислим генерации и пришлём уведомление в этот чат.",
+      kb
+    );
+    return;
+  }
+
+  // === Обычное фото для генерации ===
   if (session.step !== "await_photo") {
     const kb = await getBaseKeyboard(chatId);
     await sendMessage(
@@ -358,6 +434,67 @@ async function handleTextMessage(chatId, text) {
     return;
   }
 
+  // === ЧЕК ОПЛАТЫ (текст: последние 4 цифры, комментарий и т.п.) ===
+  if (session.step === "await_payment_proof") {
+    const plan = session.tmp?.paymentPlan || "start";
+    const shop = await getShop(chatId);
+
+    if (!shop) {
+      session.step = "idle";
+      session.tmp = {};
+      const kb = await getBaseKeyboard(chatId);
+      await sendMessage(
+        chatId,
+        "Магазин не найден. Попробуйте ещё раз выбрать тариф через «💳 Тарифы и цены».",
+        kb
+      );
+      return;
+    }
+
+    if (!ADMIN_CHAT_ID) {
+      session.step = "idle";
+      session.tmp = {};
+      const kb = await getBaseKeyboard(chatId);
+      await sendMessage(
+        chatId,
+        "Сейчас приём платежей временно недоступен. Напишите администратору @dcoredanil.",
+        kb
+      );
+      return;
+    }
+
+    await sendMessage(
+      ADMIN_CHAT_ID,
+      `🧾 Новый платёж (без скриншота)\n\nМагазин: ${shop.name}\nChat ID: ${shop.chatId}\nТариф: ${plan.toUpperCase()}\n\nКомментарий от магазина:\n${text}\n\nПодтвердить или отклонить платёж:`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "✅ Подтвердить оплату",
+                callback_data: `pay_confirm:${plan}:${shop.chatId}`
+              },
+              {
+                text: "❌ Отклонить",
+                callback_data: `pay_reject:${shop.chatId}`
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+    session.step = "idle";
+    session.tmp = {};
+    const kb = await getBaseKeyboard(chatId);
+    await sendMessage(
+      chatId,
+      "Спасибо! Информация об оплате отправлена администратору. После проверки вы получите уведомление о начислении генераций.",
+      kb
+    );
+    return;
+  }
+
   // === Регистрация магазина ===
   if (session.step === "await_shop_name") {
     session.tmp.shopName = text;
@@ -387,7 +524,7 @@ async function handleTextMessage(chatId, text) {
 
     await sendMessage(
       chatId,
-      "Укажите контакт для связи (телеграм @username или номер телефона, например +998...):",
+      "Укажите контакт для связи (телеграм @username или номер телефона, например +998901234567):",
       registrationKeyboard()
     );
     return;
@@ -688,6 +825,94 @@ async function handleTextMessage(chatId, text) {
   );
 }
 
+// ====== CALLBACK'и ПОЛЬЗОВАТЕЛЯ (inline-кнопки тарифов / отправка чека) ======
+
+async function handleUserCallback(chatId, data, callbackId) {
+  const session = getSession(chatId);
+
+  if (!data) return;
+
+  // Открыть список тарифов
+  if (data === "tariffs:select") {
+    if (callbackId) await answerCallback(callbackId);
+    await sendMessage(chatId, "Выберите тариф:", {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "Start — 100 генераций",
+              callback_data: "tariff:start"
+            }
+          ],
+          [
+            {
+              text: "Pro — 300 генераций",
+              callback_data: "tariff:pro"
+            }
+          ],
+          [
+            {
+              text: "Max — 700 генераций",
+              callback_data: "tariff:max"
+            }
+          ]
+        ]
+      }
+    });
+    return;
+  }
+
+  // Подробности по конкретному тарифу
+  if (data.startsWith("tariff:")) {
+    const plan = data.split(":")[1];
+    const text = TARIFF_PLAN_TEXTS[plan];
+
+    if (!text) {
+      if (callbackId) await answerCallback(callbackId, "Неизвестный тариф", true);
+      return;
+    }
+
+    if (callbackId) await answerCallback(callbackId);
+
+    await sendMessage(chatId, text, {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "Отправить чек оплаты",
+              callback_data: `tariff_pay:${plan}`
+            }
+          ],
+          [
+            {
+              text: "⬅️ Выбрать другой тариф",
+              callback_data: "tariffs:select"
+            }
+          ]
+        ]
+      }
+    });
+    return;
+  }
+
+  // Начать сценарий отправки чека
+  if (data.startsWith("tariff_pay:")) {
+    const plan = data.split(":")[1];
+
+    session.step = "await_payment_proof";
+    session.tmp = session.tmp || {};
+    session.tmp.paymentPlan = plan;
+
+    if (callbackId) await answerCallback(callbackId);
+
+    await sendMessage(
+      chatId,
+      "Отправьте скриншот чека оплаты ИЛИ напишите последние 4 цифры карты, с которой была оплата.\n\nПосле проверки администратор начислит генерации на ваш магазин."
+    );
+    return;
+  }
+}
+
 module.exports = {
   handleStart,
   handleMyShop,
@@ -695,5 +920,6 @@ module.exports = {
   handleHelp,
   handleStartGeneration,
   handleIncomingPhoto,
-  handleTextMessage
+  handleTextMessage,
+  handleUserCallback
 };
