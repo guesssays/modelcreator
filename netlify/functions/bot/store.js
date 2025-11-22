@@ -8,8 +8,13 @@ const {
 
 const { getStore } = require("@netlify/blobs");
 
-// Хранилище Netlify Blobs (название можешь поменять)
-const blobStore = getStore({ name: "wrape-shops" });
+// Хранилище Netlify Blobs
+const blobStore = getStore({
+  name: "wrape-shops",
+  siteID: process.env.NETLIFY_SITE_ID,   // встроенная переменная Netlify
+  token: process.env.BLOBS_TOKEN         // твой PAT из настроек
+});
+
 
 
 
