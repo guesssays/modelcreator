@@ -57,10 +57,11 @@ exports.handler = async function (event, context) {
       } else if (typeof msg.text === "string") {
         await handleTextMessage(chatId, msg.text.trim());
       } else {
+        const kb = await getBaseKeyboard(chatId);
         await sendMessage(
           chatId,
           "Отправьте текст или фото, пожалуйста.",
-          getBaseKeyboard(chatId)
+          kb
         );
       }
     }

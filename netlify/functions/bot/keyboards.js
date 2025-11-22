@@ -1,3 +1,4 @@
+// bot/keyboards.js
 const { ADMIN_CHAT_ID } = require("./config");
 const { getShop } = require("./store");
 
@@ -89,12 +90,12 @@ function adminKeyboard() {
   };
 }
 
-// Динамическая клавиатура
-function getBaseKeyboard(chatId) {
+// Динамическая клавиатура (теперь async)
+async function getBaseKeyboard(chatId) {
   if (ADMIN_CHAT_ID && String(chatId) === String(ADMIN_CHAT_ID)) {
     return adminKeyboard();
   }
-  const shop = getShop(chatId);
+  const shop = await getShop(chatId);
   if (!shop) return registrationKeyboard();
   if (shop.status === "pending") return pendingKeyboard();
   if (shop.status === "blocked") return blockedKeyboard();
@@ -160,12 +161,16 @@ function pairTypeKeyboard() {
   };
 }
 
+// ОБНОВЛЁННАЯ клавиатура поз
 function poseKeyboard() {
   return {
     reply_markup: {
       keyboard: [
         [{ text: "Стоя, полный рост" }, { text: "По пояс" }],
         [{ text: "В движении" }, { text: "Сидя" }],
+        [{ text: "Полубоком" }, { text: "Руки в карманах" }],
+        [{ text: "Скрестив руки" }, { text: "Опираясь на стену" }],
+        [{ text: "Крупный план (портрет)" }],
         [{ text: "⬅️ В главное меню" }]
       ],
       resize_keyboard: true,
@@ -174,12 +179,16 @@ function poseKeyboard() {
   };
 }
 
+// ОБНОВЛЁННАЯ клавиатура фонов
 function backgroundKeyboard() {
   return {
     reply_markup: {
       keyboard: [
-        [{ text: "Чистый студийный фон" }],
-        [{ text: "Улица города" }, { text: "Интерьер (комната)" }],
+        [{ text: "Чистый студийный фон" }, { text: "Минималистичный светлый фон" }],
+        [{ text: "Нейтральный градиентный фон" }],
+        [{ text: "Улица (день)" }, { text: "Улица (вечер / неон)" }],
+        [{ text: "Интерьер (комната)" }, { text: "Лофт-интерьер" }],
+        [{ text: "Магазин одежды / шоурум" }, { text: "Кафе / кофейня" }],
         [{ text: "Подиум / фэшн-съёмка" }],
         [{ text: "⬅️ В главное меню" }]
       ],

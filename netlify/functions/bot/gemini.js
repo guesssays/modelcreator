@@ -1,4 +1,3 @@
-// bot/gemini.js
 const { GEMINI_API_KEY } = require("./config");
 
 async function generateImageWithGemini(prompt, referenceImageBuffer) {
@@ -90,6 +89,7 @@ function mapItemType(item) {
   }
 }
 
+// ОБНОВЛЁННЫЕ позы
 function mapPose(pose) {
   switch (pose) {
     case "Стоя, полный рост":
@@ -100,19 +100,42 @@ function mapPose(pose) {
       return "dynamic walking pose";
     case "Сидя":
       return "seated pose";
+    case "Полубоком":
+      return "three-quarter standing pose, body slightly turned to the side";
+    case "Руки в карманах":
+      return "relaxed pose with hands in pockets, casual streetwear style";
+    case "Скрестив руки":
+      return "confident pose with arms crossed on the chest";
+    case "Опираясь на стену":
+      return "relaxed pose leaning against a wall";
+    case "Крупный план (портрет)":
+      return "close-up portrait framing the head and upper chest";
     default:
-      return "natural pose";
+      return "natural, relaxed fashion pose";
   }
 }
 
+// ОБНОВЛЁННЫЕ фоны
 function mapBackground(bg) {
   switch (bg) {
     case "Чистый студийный фон":
       return "minimal clean studio background";
-    case "Улица города":
-      return "modern city street background";
+    case "Минималистичный светлый фон":
+      return "minimal bright studio background with lots of negative space";
+    case "Нейтральный градиентный фон":
+      return "simple neutral gradient background with soft tones";
+    case "Улица (день)":
+      return "modern city street background in daytime with natural light";
+    case "Улица (вечер / неон)":
+      return "night city street background with neon lights and moody atmosphere";
     case "Интерьер (комната)":
-      return "cozy interior room background";
+      return "cozy modern room interior background";
+    case "Лофт-интерьер":
+      return "industrial loft interior background with concrete walls and big windows";
+    case "Магазин одежды / шоурум":
+      return "fashion clothing store showroom background with racks and spotlights";
+    case "Кафе / кофейня":
+      return "cozy coffee shop background with tables and warm lights";
     case "Подиум / фэшн-съёмка":
       return "fashion runway / editorial background";
     default:

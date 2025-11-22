@@ -7,7 +7,8 @@ const {
   deleteShop,
   ensureDailyCounters,
   getDailyLimitForPlan,
-  TRIAL_CREDITS
+  TRIAL_CREDITS,
+  persistShop
 } = require("./store");
 const { validateShopLink, validateContact } = require("./validators");
 const {
@@ -29,7 +30,7 @@ const { notifyAdminNewShop, handleAdminCommand } = require("./admin");
 // /start
 async function handleStart(chatId) {
   const session = getSession(chatId);
-  const shop = getShop(chatId);
+  const shop = await getShop(chatId);
 
   if (!shop) {
     session.step = "await_shop_name";
@@ -44,11 +45,13 @@ async function handleStart(chatId) {
     session.tmp = {};
     ensureDailyCounters(shop);
 
+    const kb = await getBaseKeyboard(chatId);
+
     if (shop.status === "pending") {
       await sendMessage(
         chatId,
         `Снова привет, ${shop.name}! 👋\n\nВаша заявка принята системой и проходит автоматическую проверку.\nПосле успешной проверки вы получите ${TRIAL_CREDITS} пробных генераций.\n\nНажмите «🏬 Мой магазин», чтобы посмотреть статус.`,
-        getBaseKeyboard(chatId)
+        kb
       );
       return;
     }
@@ -57,7 +60,7 @@ async function handleStart(chatId) {
       await sendMessage(
         chatId,
         `Снова привет, ${shop.name}.\n\nК сожалению, доступ к генерации для вашего магазина сейчас ограничен. Если вы считаете, что это ошибка, свяжитесь со службой поддержки сервиса.\n\nНажмите «🏬 Мой магазин», чтобы посмотреть информацию.`,
-        getBaseKeyboard(chatId)
+        kb
       );
       return;
     }
@@ -65,20 +68,21 @@ async function handleStart(chatId) {
     await sendMessage(
       chatId,
       `Снова привет, ${shop.name}! 👋\nУ вашего магазина осталось генераций: ${shop.creditsLeft}\n\nВыберите действие в меню ниже.`,
-      getBaseKeyboard(chatId)
+      kb
     );
   }
 }
 
 // "Мой магазин"
 async function handleMyShop(chatId) {
-  const shop = getShop(chatId);
+  const shop = await getShop(chatId);
 
   if (!shop) {
+    const kb = await getBaseKeyboard(chatId);
     await sendMessage(
       chatId,
       "Магазин ещё не зарегистрирован.\nНажмите /start, чтобы пройти регистрацию.",
-      getBaseKeyboard(chatId)
+      kb
     );
     return;
   }
@@ -110,22 +114,23 @@ Instagram/Telegram: ${shop.instagram || "—"}
 Дата регистрации: ${shop.createdAt.split("T")[0]}
 `.trim();
 
-  // Клава раздела "Мой магазин" с кнопкой удаления
   await sendMessage(chatId, stats, myShopKeyboard());
 }
 
 async function handleTariffs(chatId) {
-  await sendMessage(chatId, TARIFF_TEXT, getBaseKeyboard(chatId));
+  const kb = await getBaseKeyboard(chatId);
+  await sendMessage(chatId, TARIFF_TEXT, kb);
 }
 
 async function handleHelp(chatId) {
-  await sendMessage(chatId, HELP_TEXT, getBaseKeyboard(chatId));
+  const kb = await getBaseKeyboard(chatId);
+  await sendMessage(chatId, HELP_TEXT, kb);
 }
 
 // Старт генерации
 async function handleStartGeneration(chatId) {
   const session = getSession(chatId);
-  const shop = getShop(chatId);
+  const shop = await getShop(chatId);
 
   if (!shop) {
     session.step = "await_shop_name";
@@ -138,11 +143,13 @@ async function handleStartGeneration(chatId) {
     return;
   }
 
+  const kb = await getBaseKeyboard(chatId);
+
   if (shop.status === "pending") {
     await sendMessage(
       chatId,
       "Ваша заявка ещё не прошла автоматическую проверку системой.\nПосле успешной проверки вы получите пробные генерации и сможете протестировать сервис.",
-      getBaseKeyboard(chatId)
+      kb
     );
     return;
   }
@@ -151,7 +158,7 @@ async function handleStartGeneration(chatId) {
     await sendMessage(
       chatId,
       "Доступ к генерации для вашего магазина сейчас ограничен. Если вы считаете, что это ошибка — свяжитесь со службой поддержки сервиса.",
-      getBaseKeyboard(chatId)
+      kb
     );
     return;
   }
@@ -163,7 +170,7 @@ async function handleStartGeneration(chatId) {
     await sendMessage(
       chatId,
       "У вашего магазина закончились генерации. Посмотрите тарифы и свяжитесь с владельцем бота для пополнения.",
-      getBaseKeyboard(chatId)
+      kb
     );
     await handleTariffs(chatId);
     return;
@@ -173,7 +180,7 @@ async function handleStartGeneration(chatId) {
     await sendMessage(
       chatId,
       "На сегодня лимит генераций для вашего тарифа исчерпан. Попробуйте завтра или обновите тариф.",
-      getBaseKeyboard(chatId)
+      kb
     );
     return;
   }
@@ -197,8 +204,6 @@ async function handleStartGeneration(chatId) {
     ].join("\n"),
     {}
   );
-
-  return;
 }
 
 // Фото
@@ -206,10 +211,11 @@ async function handleIncomingPhoto(chatId, message) {
   const session = getSession(chatId);
 
   if (session.step !== "await_photo") {
+    const kb = await getBaseKeyboard(chatId);
     await sendMessage(
       chatId,
       "Сначала нажмите «🎨 Генерировать» в меню, чтобы запустить сценарий.",
-      getBaseKeyboard(chatId)
+      kb
     );
     return;
   }
@@ -240,6 +246,8 @@ async function handleTextMessage(chatId, text) {
     if (
       text.startsWith("/approve ") ||
       text.startsWith("/reject ") ||
+      text.startsWith("/add_credits ") ||
+      text.startsWith("/set_plan ") ||
       text === "/list_shops" ||
       text === "⏳ Ожидают подтверждения" ||
       text === "✅ Активные магазины" ||
@@ -255,7 +263,8 @@ async function handleTextMessage(chatId, text) {
   if (text === "⬅️ В главное меню") {
     session.step = "idle";
     session.tmp = {};
-    await sendMessage(chatId, "Главное меню:", getBaseKeyboard(chatId));
+    const kb = await getBaseKeyboard(chatId);
+    await sendMessage(chatId, "Главное меню:", kb);
     return;
   }
 
@@ -283,12 +292,14 @@ async function handleTextMessage(chatId, text) {
 
   // Удаление магазина (кнопка внутри раздела "Мой магазин")
   if (text === "🗑 Удалить магазин") {
-    const shop = getShop(chatId);
+    const shop = await getShop(chatId);
+    const kb = await getBaseKeyboard(chatId);
+
     if (!shop) {
       await sendMessage(
         chatId,
         "У вас ещё нет зарегистрированного магазина.",
-        getBaseKeyboard(chatId)
+        kb
       );
       return;
     }
@@ -313,9 +324,8 @@ async function handleTextMessage(chatId, text) {
   // Подтверждение удаления магазина
   if (session.step === "confirm_delete_shop") {
     if (text === "✅ Да, удалить") {
-      const ok = deleteShop(chatId);
+      const ok = await deleteShop(chatId);
       if (ok) {
-        // Сразу предлагаем создать новый
         session.step = "await_shop_name";
         session.tmp = {};
         await sendMessage(
@@ -326,10 +336,11 @@ async function handleTextMessage(chatId, text) {
       } else {
         session.step = "idle";
         session.tmp = {};
+        const kb = await getBaseKeyboard(chatId);
         await sendMessage(
           chatId,
           "Магазин не найден.",
-          getBaseKeyboard(chatId)
+          kb
         );
       }
       return;
@@ -338,10 +349,11 @@ async function handleTextMessage(chatId, text) {
     // Любой другой ответ — отмена
     session.step = "idle";
     session.tmp = {};
+    const kb = await getBaseKeyboard(chatId);
     await sendMessage(
       chatId,
       "Удаление отменено.",
-      getBaseKeyboard(chatId)
+      kb
     );
     return;
   }
@@ -400,15 +412,16 @@ async function handleTextMessage(chatId, text) {
       contact: session.tmp.shopContact || ""
     };
 
-    const shop = createShop(chatId, shopData);
+    const shop = await createShop(chatId, shopData);
 
     session.step = "idle";
     session.tmp = {};
 
+    const kb = await getBaseKeyboard(chatId);
     await sendMessage(
       chatId,
       `Готово! Мы зарегистрировали ваш магазин «${shop.name}».\n\nЗаявка принята и отправлена на проверку.\nПосле успешной проверки вы получите ${TRIAL_CREDITS} пробных генераций, и бот уведомит вас.`,
-      getBaseKeyboard(chatId)
+      kb
     );
 
     await notifyAdminNewShop(shop);
@@ -532,7 +545,9 @@ async function handleTextMessage(chatId, text) {
   if (session.step === "await_background") {
     session.tmp.background = text;
 
-    const shop = getShop(chatId);
+    const shop = await getShop(chatId);
+    const kb = await getBaseKeyboard(chatId);
+
     if (!shop) {
       session.step = "await_shop_name";
       session.tmp = {};
@@ -549,7 +564,7 @@ async function handleTextMessage(chatId, text) {
       await sendMessage(
         chatId,
         "Ваша заявка ещё не прошла автоматическую проверку системой. После успешной проверки вы сможете запускать генерацию.",
-        getBaseKeyboard(chatId)
+        kb
       );
       return;
     }
@@ -559,7 +574,7 @@ async function handleTextMessage(chatId, text) {
       await sendMessage(
         chatId,
         "Доступ к генерации для вашего магазина сейчас ограничен. Если вы считаете, что это ошибка — свяжитесь со службой поддержки сервиса.",
-        getBaseKeyboard(chatId)
+        kb
       );
       return;
     }
@@ -572,7 +587,7 @@ async function handleTextMessage(chatId, text) {
       await sendMessage(
         chatId,
         "У вашего магазина закончились генерации. Посмотрите тарифы и свяжитесь с владельцем бота для пополнения.",
-        getBaseKeyboard(chatId)
+        kb
       );
       await handleTariffs(chatId);
       return;
@@ -583,7 +598,7 @@ async function handleTextMessage(chatId, text) {
       await sendMessage(
         chatId,
         "На сегодня лимит генераций для вашего тарифа исчерпан. Попробуйте завтра или обновите тариф.",
-        getBaseKeyboard(chatId)
+        kb
       );
       return;
     }
@@ -596,7 +611,7 @@ async function handleTextMessage(chatId, text) {
       await sendMessage(
         chatId,
         `Пожалуйста, подождите ещё ${waitSec} сек перед следующей генерацией.`,
-        getBaseKeyboard(chatId)
+        kb
       );
       return;
     }
@@ -622,6 +637,7 @@ async function handleTextMessage(chatId, text) {
       ensureDailyCounters(shop);
       shop.generatedToday += 1;
       shop.lastGeneratedAt = Date.now();
+      await persistShop(shop);
 
       await sendPhoto(
         chatId,
@@ -632,28 +648,31 @@ async function handleTextMessage(chatId, text) {
       session.step = "idle";
       session.tmp = {};
 
+      const kbAfter = await getBaseKeyboard(chatId);
+
       if (shop.creditsLeft <= 0) {
         await sendMessage(
           chatId,
           "У вашего магазина закончились генерации. Посмотрите тарифы 👇",
-          getBaseKeyboard(chatId)
+          kbAfter
         );
         await handleTariffs(chatId);
       } else {
         await sendMessage(
           chatId,
           `У вашего магазина осталось генераций: ${shop.creditsLeft}`,
-          getBaseKeyboard(chatId)
+          kbAfter
         );
       }
     } catch (err) {
       console.error("Error during generation:", err);
       session.step = "idle";
       session.tmp = {};
+      const kbErr = await getBaseKeyboard(chatId);
       await sendMessage(
         chatId,
         "Произошла ошибка при генерации изображения. Попробуйте ещё раз позже.",
-        getBaseKeyboard(chatId)
+        kbErr
       );
     }
 
@@ -661,10 +680,11 @@ async function handleTextMessage(chatId, text) {
   }
 
   // fallback
+  const kb = await getBaseKeyboard(chatId);
   await sendMessage(
     chatId,
     "Не понял сообщение. Используйте кнопки ниже 👇",
-    getBaseKeyboard(chatId)
+    kb
   );
 }
 

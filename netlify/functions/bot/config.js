@@ -16,13 +16,16 @@ const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
 const TELEGRAM_FILE_API = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}`;
 
 // Настройки кредитов/лимитов
+// 1 генерация ≈ 1 кредит
 const TRIAL_CREDITS = 10;
+
 const DAILY_LIMIT_BY_PLAN = {
-  trial: 20,
-  start: 100,
-  pro: 300,
-  max: 1000
+  trial: 20,   // можно протестить
+  start: 150,  // малый магазин
+  pro: 400,    // средний
+  max: 1000    // крупный, на будущее
 };
+
 const DEFAULT_DAILY_LIMIT = 20;
 const COOLDOWN_MS = 10_000; // 10 секунд
 
