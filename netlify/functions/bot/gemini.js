@@ -45,15 +45,21 @@ async function generateImageWithGemini(prompt, referenceImageBuffer) {
   if (candidates.length > 0) {
     const parts = candidates[0].content?.parts || [];
     for (const part of parts) {
-      if (part.inline_data?.data) {
-        imageBase64 = part.inline_data.data;
+      // Gemini в ответе отдаёт inlineData (camelCase),
+      // но на всякий случай поддерживаем и inline_data.
+      const inline = part.inlineData || part.inline_data;
+      if (inline?.data) {
+        imageBase64 = inline.data;
         break;
       }
     }
   }
 
   if (!imageBase64) {
-    console.error("No image data in Gemini response", JSON.stringify(json));
+    console.error(
+      "No image data in Gemini response",
+      JSON.stringify(json).slice(0, 2000)
+    );
     throw new Error("No image data from Gemini");
   }
 
