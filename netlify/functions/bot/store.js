@@ -6,21 +6,39 @@ const {
   DEFAULT_DAILY_LIMIT
 } = require("./config");
 
-const { getStore } = require("@netlify/blobs");
+const { getStore, connectLambda } = require("@netlify/blobs");
 
-// Хранилище Netlify Blobs
-const blobStore = getStore({
-  name: "wrape-shops",
-  siteID: process.env.NETLIFY_SITE_ID,   // встроенная переменная Netlify
-  token: process.env.BLOBS_TOKEN         // твой PAT из настроек
-});
-
-
-
+// Ленивая инициализация хранилища Blobs
+let blobStore = null;
 
 const sessions = {}; // состояния диалогов по chatId (можно не сохранять, это временное)
 let shops = {};      // магазины по chatId
 let shopsLoaded = false;
+
+// Вызываем ОДИН РАЗ на каждый запуск Lambda из handler
+function initBlobStore(event) {
+  if (blobStore) return; // уже инициализировано
+
+  try {
+    // Настраиваем окружение Blobs для Netlify Functions v1
+    connectLambda(event);
+
+    // Открываем стор (siteID / token Netlify пробросит сам)
+    blobStore = getStore("wrape-shops");
+    console.log("Netlify Blobs store 'wrape-shops' initialized");
+  } catch (e) {
+    console.error("Failed to init Netlify Blobs store:", e);
+    throw e;
+  }
+}
+
+function ensureStore() {
+  if (!blobStore) {
+    throw new Error(
+      "Blob store is not initialized. Call initBlobStore(event) in your function handler before using store methods."
+    );
+  }
+}
 
 function getToday() {
   return new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
@@ -29,6 +47,7 @@ function getToday() {
 // ---------- Загрузка/сохранение магазинов в Blobs ----------
 
 async function loadShops() {
+  ensureStore();
   if (shopsLoaded) return;
   try {
     const data = await blobStore.get("shops.json", { type: "json" });
@@ -45,6 +64,7 @@ async function loadShops() {
 }
 
 async function saveShops() {
+  ensureStore();
   try {
     await blobStore.set("shops.json", JSON.stringify(shops || {}), {
       contentType: "application/json"
@@ -133,7 +153,6 @@ function getDailyLimitForPlan(plan) {
   return Number.MAX_SAFE_INTEGER;
 }
 
-
 async function listShopsByStatus(status) {
   await loadShops();
   return Object.values(shops).filter((s) => s.status === status);
@@ -172,6 +191,7 @@ async function persistShop(shop) {
 }
 
 module.exports = {
+  initBlobStore,          // <-- важно вызывать из handler
   getToday,
   getSession,
   getShop,

@@ -9,8 +9,14 @@ const {
 } = require("./bot/userHandlers");
 const { handleAdminCallback } = require("./bot/admin");
 
+// ИНИЦИАЛИЗАЦИЯ Netlify Blobs для Functions v1
+const { initBlobStore } = require("./bot/store");
+
 exports.handler = async function (event, context) {
   try {
+    // Обязательно инициализируем Blobs до любых обращений к store
+    initBlobStore(event);
+
     if (event.httpMethod !== "POST") {
       return {
         statusCode: 200,
