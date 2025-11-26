@@ -81,10 +81,8 @@ function getSession(chatId) {
     sessions[chatId] = {
       step: "idle",
       tmp: {},
-      language: "ru" // по умолчанию
+      language: null // язык выбираем явно, а не по умолчанию
     };
-  } else if (!sessions[chatId].language) {
-    sessions[chatId].language = "ru";
   }
   return sessions[chatId];
 }
