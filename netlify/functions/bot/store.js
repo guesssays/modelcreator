@@ -74,31 +74,39 @@ async function saveShops() {
   }
 }
 
-// ---------- Сессии (остаются в памяти, это нормально) ----------
+// ---------- Сессии (остаются в памяти) ----------
 
 function getSession(chatId) {
   if (!sessions[chatId]) {
     sessions[chatId] = {
       step: "idle",
-      tmp: {}
+      tmp: {},
+      language: "ru" // по умолчанию
     };
+  } else if (!sessions[chatId].language) {
+    sessions[chatId].language = "ru";
   }
   return sessions[chatId];
 }
 
-// ---------- Работа с магазинами (уже с учётом Blobs) ----------
+// ---------- Работа с магазинами (с учётом Blobs) ----------
 
 async function getShop(chatId) {
   await loadShops();
   const shop = shops[chatId] || null;
-  if (shop && !shop.status) {
-    shop.status = "active";
+  if (shop) {
+    if (!shop.status) {
+      shop.status = "active";
+    }
+    if (!shop.language) {
+      shop.language = "ru";
+    }
   }
   return shop;
 }
 
 // Создаём магазин со статусом pending
-async function createShop(chatId, { name, instagram, contact }) {
+async function createShop(chatId, { name, instagram, contact, language = "ru" }) {
   await loadShops();
   const today = getToday();
   const shop = {
@@ -114,7 +122,8 @@ async function createShop(chatId, { name, instagram, contact }) {
     generatedToday: 0,
     generatedTodayDate: today,
     lastGeneratedAt: 0,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    language: language || "ru"
   };
   shops[chatId] = shop;
   console.log("Shop created (pending):", shop);
@@ -184,6 +193,15 @@ async function setShopPlan(chatId, plan) {
   return shop;
 }
 
+async function setShopLanguage(chatId, language) {
+  await loadShops();
+  const shop = shops[chatId];
+  if (!shop) return null;
+  shop.language = language || "ru";
+  await saveShops();
+  return shop;
+}
+
 async function persistShop(shop) {
   await loadShops();
   shops[shop.chatId] = shop;
@@ -203,6 +221,7 @@ module.exports = {
   listAllShops,
   addCreditsToShop,
   setShopPlan,
+  setShopLanguage,
   persistShop,
   TRIAL_CREDITS
 };
