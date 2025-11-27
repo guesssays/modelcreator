@@ -2,7 +2,8 @@
 const { sendMessage, answerCallback } = require("./telegram");
 const {
   adminKeyboard,
-  getBaseKeyboard
+  getBaseKeyboard,
+  registrationKeyboard
 } = require("./keyboards");
 const {
   listShopsByStatus,
@@ -12,7 +13,8 @@ const {
   TRIAL_CREDITS,
   addCreditsToShop,
   setShopPlan,
-  persistShop
+  persistShop,
+  deleteShop
 } = require("./store");
 const { ADMIN_CHAT_ID } = require("./config");
 
@@ -134,7 +136,7 @@ Chat ID: ${shop.chatId}
   });
 }
 
-// ================== БАЗОВЫЕ ОПЕРАЦИИ approve/reject ==================
+// ================== БАЗОВЫЕ ОПЕРАЦИИ approve / block / soft-reject ==================
 
 async function approveShop(adminChatId, targetId) {
   const shop = await getShop(targetId);
@@ -168,6 +170,7 @@ async function approveShop(adminChatId, targetId) {
   );
 }
 
+// ЖЁСТКАЯ блокировка (используется для "⛔ Заблокировать")
 async function rejectShop(adminChatId, targetId) {
   const shop = await getShop(targetId);
   if (!shop) {
@@ -193,8 +196,69 @@ async function rejectShop(adminChatId, targetId) {
   const kb = await getBaseKeyboard(shop.chatId);
   await sendMessage(
     shop.chatId,
-    "К сожалению, ваша заявка не прошла автоматическую проверку системы. Если вы считаете, что это ошибка — свяжитесь со службой поддержки сервиса.",
+    "К сожалению, ваш магазин был заблокирован администратором сервиса. Если вы считаете, что это ошибка — свяжитесь со службой поддержки.",
     kb
+  );
+}
+
+// МЯГКИЙ отказ pending-заявки: магазин НЕ блокируем, а просим перерегистрироваться
+async function rejectPendingShop(adminChatId, targetId) {
+  const shop = await getShop(targetId);
+  if (!shop) {
+    await sendMessage(
+      adminChatId,
+      `Магазин с chatId ${targetId} не найден.`,
+      adminKeyboard()
+    );
+    return;
+  }
+
+  // Если магазин уже не pending (например, активный) — ведём себя как "блокировка",
+  // чтобы не ломать старое поведение для /reject на активных.
+  if (shop.status !== "pending") {
+    await rejectShop(adminChatId, targetId);
+    return;
+  }
+
+  const lang = shop.language || "ru";
+
+  // Удаляем заявку магазина, чтобы он мог пройти регистрацию заново
+  await deleteShop(targetId);
+
+  await sendMessage(
+    adminChatId,
+    `Заявка магазина «${shop.name}» (chatId: ${shop.chatId}) отклонена. Магазину отправлено уведомление с просьбой заполнить данные заново.`,
+    adminKeyboard()
+  );
+
+  const userTextRu = `
+К сожалению, заявка вашего магазина не была принята.
+
+Возможные причины:
+• неверные или неполные данные магазина;
+• несуществующий или недоступный контакт;
+• ссылка на профиль не открывается.
+
+Проверьте, пожалуйста, данные и попробуйте зарегистрировать магазин заново — нажмите /start и заново заполните информацию о магазине.
+`.trim();
+
+  const userTextUz = `
+Afsuski, sizning do'kon arizangiz qabul qilinmadi.
+
+Sabablar quyidagilardan biri bo'lishi mumkin:
+• do'kon nomi yoki ma'lumotlari noto'g'ri yoki to'liq emas;
+• ko'rsatilgan kontakt mavjud emas yoki javob bermaydi;
+• profil havolasi ochilmayapti.
+
+Iltimos, ma'lumotlarni qayta tekshiring va do'konni qaytadan ro'yxatdan o'tkazing — /start buyrug'ini bosib, ma'lumotlarni qayta kiriting.
+`.trim();
+
+  const userText = lang === "uz" ? userTextUz : userTextRu;
+
+  await sendMessage(
+    shop.chatId,
+    userText,
+    registrationKeyboard(lang)
   );
 }
 
@@ -217,7 +281,7 @@ async function handleAdminCommand(chatId, text) {
     return;
   }
 
-  // /reject <chatId>
+  // /reject <chatId> — теперь мягкий отказ pending-заявки
   if (text.startsWith("/reject ")) {
     const parts = text.split(" ").filter(Boolean);
     if (parts.length < 2) {
@@ -229,7 +293,7 @@ async function handleAdminCommand(chatId, text) {
       return;
     }
     const targetId = parts[1];
-    await rejectShop(chatId, targetId);
+    await rejectPendingShop(chatId, targetId);
     return;
   }
 
@@ -453,15 +517,15 @@ async function handleAdminCallback(fromId, data, callbackId) {
 
   if (data.startsWith("reject:")) {
     const targetId = data.split(":")[1];
-    await rejectShop(fromId, targetId);
-    if (callbackId) await answerCallback(callbackId, "Магазин отклонён");
+    await rejectPendingShop(fromId, targetId);
+    if (callbackId) await answerCallback(callbackId, "Заявка отклонена");
     return;
   }
 
-  // блокировка активного магазина
+  // блокировка активного магазина (жёсткий блок)
   if (data.startsWith("block:")) {
     const targetId = data.split(":")[1];
-    await rejectShop(fromId, targetId); // используем ту же логику блокировки
+    await rejectShop(fromId, targetId); // используем логику блокировки
     if (callbackId) await answerCallback(callbackId, "Магазин заблокирован");
     return;
   }
