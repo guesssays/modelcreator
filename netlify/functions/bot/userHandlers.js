@@ -425,8 +425,28 @@ async function handleTextMessage(chatId, text) {
   const KIDS_LABEL_RU = "Детская одежда";
   const KIDS_LABEL_UZ = "Bolalar kiyimi";
 
-  const KIDS_AGE_OPTIONS_RU = ["До 10 лет", "10-12", "12-14", "14-16"];
-  const KIDS_AGE_OPTIONS_UZ = ["10 yoshgacha", "10-12", "12-14", "14-16"];
+  const KIDS_AGE_OPTIONS_RU = [
+    "0-6 месяц",
+    "0.6-1 год",
+    "1-3 года",
+    "3-6 лет",
+    "До 10 лет",
+    "10-12",
+    "12-14",
+    "14-16"
+  ];
+
+  const KIDS_AGE_OPTIONS_UZ = [
+    "0-6 oy",
+    "0.6-1 yil",
+    "1-3 yil",
+    "3-6 yil",
+    "10 yoshgacha",
+    "10-12",
+    "12-14",
+    "14-16"
+  ];
+
 
   // Админ
   if (ADMIN_CHAT_ID && String(chatId) === String(ADMIN_CHAT_ID)) {
@@ -882,37 +902,39 @@ async function handleTextMessage(chatId, text) {
   }
 
 
-if (session.step === "await_pair_type") {
-  session.tmp.pairType = text;
-  session.step = "await_age";
 
-  const kidsLabel = lang === "uz" ? KIDS_LABEL_UZ : KIDS_LABEL_RU;
+  if (session.step === "await_pair_type") {
+    session.tmp.pairType = text;
+    session.step = "await_age";
 
-  const msg =
-    lang === "uz"
-      ? "Modellar yoshi (masalan: 18-25, 25-35) ni tanlang yoki yozing. Agar bolalar uchun kiyim bo'lsa — «Bolalar kiyimi» ni tanlang:"
-      : "Укажи возраст моделей (например: 18-25, 25-35). Если это детская одежда — выбери «Детская одежда»:";
-  await sendMessage(chatId, msg, {
-    reply_markup: {
-      keyboard: [
-        [{ text: kidsLabel }, { text: "18-25" }],
-        [{ text: "25-35" }, { text: "35-45" }],
-        [{ text: "45+" }],
-        [
-          {
-            text:
-              lang === "uz"
-                ? "⬅️ Asosiy menyu"
-                : "⬅️ В главное меню"
-          }
-        ]
-      ],
-      resize_keyboard: true,
-      one_time_keyboard: true
-    }
-  });
-  return;
-}
+    const kidsLabel = lang === "uz" ? KIDS_LABEL_UZ : KIDS_LABEL_RU;
+
+    const msg =
+      lang === "uz"
+        ? "Modellar yoshi (masalan: 18-25, 25-35) ni tanlang yoki yozing. Agar bolalar uchun kiyim bo'lsa — «Bolalar kiyimi» ni tanlang:"
+        : "Укажи возраст моделей (например: 18-25, 25-35). Если это детская одежда — выбери «Детская одежда»:";
+    await sendMessage(chatId, msg, {
+      reply_markup: {
+        keyboard: [
+          [{ text: kidsLabel }, { text: "18-25" }],
+          [{ text: "25-35" }, { text: "35-45" }],
+          [{ text: "45+" }],
+          [
+            {
+              text:
+                lang === "uz"
+                  ? "⬅️ Asosiy menyu"
+                  : "⬅️ В главное меню"
+            }
+          ]
+        ],
+        resize_keyboard: true,
+        one_time_keyboard: true
+      }
+    });
+    return;
+  }
+
 
 
 
@@ -933,6 +955,8 @@ if (session.step === "await_pair_type") {
           keyboard: [
             [{ text: options[0] }, { text: options[1] }],
             [{ text: options[2] }, { text: options[3] }],
+            [{ text: options[4] }, { text: options[5] }],
+            [{ text: options[6] }, { text: options[7] }],
             [
               {
                 text:
@@ -961,12 +985,13 @@ if (session.step === "await_pair_type") {
     return;
   }
 
-  // Новый шаг: выбор конкретного детского возраста
+
   if (session.step === "await_kids_age") {
     const validOptions =
       lang === "uz" ? KIDS_AGE_OPTIONS_UZ : KIDS_AGE_OPTIONS_RU;
 
     if (!validOptions.includes(text)) {
+      const options = validOptions;
       const msg =
         lang === "uz"
           ? "Iltimos, bolalar yoshi uchun variantlardan birini tanlang."
@@ -974,8 +999,10 @@ if (session.step === "await_pair_type") {
       await sendMessage(chatId, msg, {
         reply_markup: {
           keyboard: [
-            [{ text: validOptions[0] }, { text: validOptions[1] }],
-            [{ text: validOptions[2] }, { text: validOptions[3] }],
+            [{ text: options[0] }, { text: options[1] }],
+            [{ text: options[2] }, { text: options[3] }],
+            [{ text: options[4] }, { text: options[5] }],
+            [{ text: options[6] }, { text: options[7] }],
             [
               {
                 text:
@@ -992,7 +1019,7 @@ if (session.step === "await_pair_type") {
       return;
     }
 
-    // Сохраняем выбранный детский возраст
+    // Сохраняем выбранный детский возраст и идём дальше по сценарию
     session.tmp.age = text;
     session.step = "await_pose";
 
@@ -1003,6 +1030,7 @@ if (session.step === "await_pair_type") {
     await sendMessage(chatId, msg, poseKeyboard(lang));
     return;
   }
+
 
 
   if (session.step === "await_pose") {
