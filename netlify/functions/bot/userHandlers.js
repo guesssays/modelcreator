@@ -422,6 +422,12 @@ async function handleTextMessage(chatId, text) {
   const shop = await getShop(chatId);
   const lang = getLang(chatId, session, shop);
 
+  const KIDS_LABEL_RU = "Детская одежда";
+  const KIDS_LABEL_UZ = "Bolalar kiyimi";
+
+  const KIDS_AGE_OPTIONS_RU = ["До 10 лет", "10-12", "12-14", "14-16"];
+  const KIDS_AGE_OPTIONS_UZ = ["10 yoshgacha", "10-12", "12-14", "14-16"];
+
   // Админ
   if (ADMIN_CHAT_ID && String(chatId) === String(ADMIN_CHAT_ID)) {
     if (
@@ -847,15 +853,18 @@ async function handleTextMessage(chatId, text) {
     session.tmp.gender = text;
     session.step = "await_age";
 
+    const kidsLabel = lang === "uz" ? KIDS_LABEL_UZ : KIDS_LABEL_RU;
+
     const msg =
       lang === "uz"
-        ? "Model yoshi (masalan: 18-25, 25-35) ni tanlang yoki yozing:"
-        : "Укажи возраст модели (например: 18-25, 25-35):";
+        ? "Model yoshi (masalan: 18-25, 25-35) ni tanlang yoki yozing. Agar bolalar uchun kiyim bo'lsa — «Bolalar kiyimi» ni tanlang:"
+        : "Укажи возраст модели (например: 18-25, 25-35). Если это детская одежда — выбери «Детская одежда»:";
     await sendMessage(chatId, msg, {
       reply_markup: {
         keyboard: [
-          [{ text: "18-25" }, { text: "25-35" }],
-          [{ text: "35-45" }, { text: "45+" }],
+          [{ text: kidsLabel }, { text: "18-25" }],
+          [{ text: "25-35" }, { text: "35-45" }],
+          [{ text: "45+" }],
           [
             {
               text:
@@ -872,36 +881,75 @@ async function handleTextMessage(chatId, text) {
     return;
   }
 
-  if (session.step === "await_pair_type") {
-    session.tmp.pairType = text;
-    session.step = "await_age";
 
-    const msg =
-      lang === "uz"
-        ? "Modellar yoshi (masalan: 18-25, 25-35) ni tanlang yoki yozing:"
-        : "Укажи возраст моделей (например: 18-25, 25-35):";
-    await sendMessage(chatId, msg, {
-      reply_markup: {
-        keyboard: [
-          [{ text: "18-25" }, { text: "25-35" }],
-          [{ text: "35-45" }, { text: "45+" }],
-          [
-            {
-              text:
-                lang === "uz"
-                  ? "⬅️ Asosiy menyu"
-                  : "⬅️ В главное меню"
-            }
-          ]
-        ],
-        resize_keyboard: true,
-        one_time_keyboard: true
-      }
-    });
-    return;
-  }
+if (session.step === "await_pair_type") {
+  session.tmp.pairType = text;
+  session.step = "await_age";
+
+  const kidsLabel = lang === "uz" ? KIDS_LABEL_UZ : KIDS_LABEL_RU;
+
+  const msg =
+    lang === "uz"
+      ? "Modellar yoshi (masalan: 18-25, 25-35) ni tanlang yoki yozing. Agar bolalar uchun kiyim bo'lsa — «Bolalar kiyimi» ni tanlang:"
+      : "Укажи возраст моделей (например: 18-25, 25-35). Если это детская одежда — выбери «Детская одежда»:";
+  await sendMessage(chatId, msg, {
+    reply_markup: {
+      keyboard: [
+        [{ text: kidsLabel }, { text: "18-25" }],
+        [{ text: "25-35" }, { text: "35-45" }],
+        [{ text: "45+" }],
+        [
+          {
+            text:
+              lang === "uz"
+                ? "⬅️ Asosiy menyu"
+                : "⬅️ В главное меню"
+          }
+        ]
+      ],
+      resize_keyboard: true,
+      one_time_keyboard: true
+    }
+  });
+  return;
+}
+
+
 
   if (session.step === "await_age") {
+    // Если выбрали категорию детской одежды — переходим на подвыбор возрастов
+    if (text === KIDS_LABEL_RU || text === KIDS_LABEL_UZ) {
+      session.step = "await_kids_age";
+
+      const options =
+        lang === "uz" ? KIDS_AGE_OPTIONS_UZ : KIDS_AGE_OPTIONS_RU;
+
+      const msg =
+        lang === "uz"
+          ? "Bolalar kiyimi uchun yosh toifasini tanlang:"
+          : "Выбери возрастную категорию детской одежды:";
+      await sendMessage(chatId, msg, {
+        reply_markup: {
+          keyboard: [
+            [{ text: options[0] }, { text: options[1] }],
+            [{ text: options[2] }, { text: options[3] }],
+            [
+              {
+                text:
+                  lang === "uz"
+                    ? "⬅️ Asosiy menyu"
+                    : "⬅️ В главное меню"
+              }
+            ]
+          ],
+          resize_keyboard: true,
+          one_time_keyboard: true
+        }
+      });
+      return;
+    }
+
+    // Обычный взрослый возраст
     session.tmp.age = text;
     session.step = "await_pose";
 
@@ -912,6 +960,50 @@ async function handleTextMessage(chatId, text) {
     await sendMessage(chatId, msg, poseKeyboard(lang));
     return;
   }
+
+  // Новый шаг: выбор конкретного детского возраста
+  if (session.step === "await_kids_age") {
+    const validOptions =
+      lang === "uz" ? KIDS_AGE_OPTIONS_UZ : KIDS_AGE_OPTIONS_RU;
+
+    if (!validOptions.includes(text)) {
+      const msg =
+        lang === "uz"
+          ? "Iltimos, bolalar yoshi uchun variantlardan birini tanlang."
+          : "Пожалуйста, выбери один из вариантов возраста детской одежды.";
+      await sendMessage(chatId, msg, {
+        reply_markup: {
+          keyboard: [
+            [{ text: validOptions[0] }, { text: validOptions[1] }],
+            [{ text: validOptions[2] }, { text: validOptions[3] }],
+            [
+              {
+                text:
+                  lang === "uz"
+                    ? "⬅️ Asosiy menyu"
+                    : "⬅️ В главное меню"
+              }
+            ]
+          ],
+          resize_keyboard: true,
+          one_time_keyboard: true
+        }
+      });
+      return;
+    }
+
+    // Сохраняем выбранный детский возраст
+    session.tmp.age = text;
+    session.step = "await_pose";
+
+    const msg =
+      lang === "uz"
+        ? "Model pozasini tanlang:"
+        : "Выбери позу модели:";
+    await sendMessage(chatId, msg, poseKeyboard(lang));
+    return;
+  }
+
 
   if (session.step === "await_pose") {
     session.tmp.pose = text;
