@@ -55,28 +55,48 @@ function getLang(chatId, session, shop) {
 
 // ======/start======
 
+// ======/start======
+
 async function handleStart(chatId) {
   const session = getSession(chatId);
   const shop = await getShop(chatId);
 
-  // Если магазина нет — гость с 10 бесплатными генерациями
-  if (!shop) {
-    const kb = await getBaseKeyboard(chatId);
+  // 1️⃣ Если язык ещё не выбран ни в сессии, ни в магазине — сначала спрашиваем язык
+  if (!session.language && !(shop && shop.language)) {
+    session.step = "await_language";
+    session.tmp = session.tmp || {};
+
     await sendMessage(
       chatId,
-      "Добро пожаловать! 🎉\n" +
-        "У вас есть 10 бесплатных генераций без регистрации.\n\n" +
-        "Нажмите «🎨 Генерировать», чтобы попробовать.",
-      kb
+      "Выберите язык / Tilni tanlang:",
+      languageSelectKeyboard()
     );
 
-    session.step = "idle";
-    session.tmp = session.tmp || {};
     return;
   }
 
+  // 2️⃣ Язык уже есть — берём его как обычно
   const lang = getLang(chatId, session, shop);
 
+  // Если магазина нет — гость с 10 бесплатными генерациями
+if (!shop) {
+  const kb = await getBaseKeyboard(chatId);
+  const lang = getLang(chatId, session, null);
+
+  const welcomeText =
+    lang === "uz"
+      ? "Xush kelibsiz! 🎉\nSizda ro'yxatdan o'tmasdan 10 ta bepul generatsiya bor.\n\nBoshlash uchun «🎨 Rasm yaratish» tugmasini bosing."
+      : "Добро пожаловать! 🎉\nУ вас есть 10 бесплатных генераций без регистрации.\n\nНажмите «🎨 Генерировать», чтобы попробовать.";
+
+  await sendMessage(chatId, welcomeText, kb);
+
+  session.step = "idle";
+  session.tmp = session.tmp || {};
+  return;
+}
+
+
+  // 3️⃣ Магазин уже есть
   session.step = "idle";
   session.tmp = {};
   ensureDailyCounters(shop);
@@ -100,6 +120,7 @@ async function handleStart(chatId) {
 
   await sendMessage(chatId, text, kb);
 }
+
 
 // ======"Мой магазин"======
 
@@ -211,33 +232,38 @@ async function handleStartGeneration(chatId) {
   const lang = getLang(chatId, session, shop);
 
   // Гость (без магазина) — 10 бесплатных генераций
-  if (!shop) {
-    if (session.guestCreditsLeft > 0) {
-      session.step = "await_photo_guest";
-      session.tmp = session.tmp || {};
-
-      await sendMessage(
-        chatId,
-        "У вас есть 10 бесплатных генераций без регистрации.\n" +
-          `Осталось: ${session.guestCreditsLeft}\n\n` +
-          "Отправьте фото вещи 👇"
-      );
-
-      return;
-    }
-
-    // Если бесплатные генерации закончились — требуем регистрацию
-    session.step = "await_shop_name";
+// Гость (без магазина) — 10 бесплатных генераций
+if (!shop) {
+  if (session.guestCreditsLeft > 0) {
+    session.step = "await_photo_guest";
     session.tmp = session.tmp || {};
 
-    await sendMessage(
-      chatId,
-      "Ваши 10 бесплатных генераций закончились.\n" +
-        "Чтобы продолжить — зарегистрируйте магазин."
-    );
+    const msg =
+      lang === "uz"
+        ? `Sizda ro'yxatdan o'tmasdan 10 ta bepul generatsiya bor.\nQolganlari: ${session.guestCreditsLeft}\n\nKiyim fotosuratini yuboring 👇`
+        : "У вас есть 10 бесплатных генераций без регистрации.\n" +
+          `Осталось: ${session.guestCreditsLeft}\n\n` +
+          "Отправьте фото вещи 👇";
+
+    await sendMessage(chatId, msg);
 
     return;
   }
+
+  // Если бесплатные генерации закончились — требуем регистрацию
+  session.step = "await_shop_name";
+  session.tmp = session.tmp || {};
+
+  const endMsg =
+    lang === "uz"
+      ? "Siz 10 ta bepul generatsiyadan foydalandingiz.\nDavom etish uchun do'konni ro'yxatdan o'tkazing."
+      : "Ваши 10 бесплатных генераций закончились.\nЧтобы продолжить — зарегистрируйте магазин.";
+
+  await sendMessage(chatId, endMsg);
+
+  return;
+}
+
 
   // Магазин
   const kb = await getBaseKeyboard(chatId);
@@ -1080,34 +1106,41 @@ async function handleTextMessage(chatId, text) {
     const newShop = await createShop(chatId, shopData);
 
     // 🔹 Реферальные бонусы
-    if (newShop.referrerId) {
-      try {
-        const refShop = await getShop(newShop.referrerId);
-        if (refShop) {
-          // бонус пригласившему
-          refShop.creditsLeft += REF_BONUS_FOR_REFERRER;
-          refShop.creditsTotal += REF_BONUS_FOR_REFERRER;
-          await persistShop(refShop);
+// 🔹 Реферальные бонусы
+if (newShop.referrerId) {
+  try {
+    const refShop = await getShop(newShop.referrerId);
+    if (refShop) {
+      // бонус пригласившему
+      refShop.creditsLeft += REF_BONUS_FOR_REFERRER;
+      refShop.creditsTotal += REF_BONUS_FOR_REFERRER;
+      await persistShop(refShop);
 
-          await sendMessage(
-            Number(refShop.chatId),
-            `🎁 По вашей реферальной ссылке зарегистрировался новый магазин «${newShop.name}».\n\nВам начислено +${REF_BONUS_FOR_REFERRER} генераций.`
-          );
-        }
+      const refLang = refShop.language || "ru";
+      const refMsg =
+        refLang === "uz"
+          ? `🎁 Sizning referal havolangiz orqali yangi «${newShop.name}» do'koni ro'yxatdan o'tdi.\n\nSizga +${REF_BONUS_FOR_REFERRER} ta generatsiya qo'shildi.`
+          : `🎁 По вашей реферальной ссылке зарегистрировался новый магазин «${newShop.name}».\n\nВам начислено +${REF_BONUS_FOR_REFERRER} генераций.`;
 
-        // бонус приглашённому магазину
-        newShop.creditsLeft += REF_BONUS_FOR_INVITED;
-        newShop.creditsTotal += REF_BONUS_FOR_INVITED;
-        await persistShop(newShop);
-
-        await sendMessage(
-          chatId,
-          `🎉 Вы зарегистрировались по реферальной ссылке.\n\nНа баланс магазина начислено +${REF_BONUS_FOR_INVITED} дополнительных генераций.`
-        );
-      } catch (e) {
-        console.error("Referral bonus error:", e);
-      }
+      await sendMessage(Number(refShop.chatId), refMsg);
     }
+
+    // бонус приглашённому магазину
+    newShop.creditsLeft += REF_BONUS_FOR_INVITED;
+    newShop.creditsTotal += REF_BONUS_FOR_INVITED;
+    await persistShop(newShop);
+
+    const invitedMsg =
+      lang === "uz"
+        ? `🎉 Siz referal havola orqali ro'yxatdan o'tdingiz.\n\nDo'kon balansiga qo'shimcha +${REF_BONUS_FOR_INVITED} ta generatsiya qo'shildi.`
+        : `🎉 Вы зарегистрировались по реферальной ссылке.\n\nНа баланс магазина начислено +${REF_BONUS_FOR_INVITED} дополнительных генераций.`;
+
+    await sendMessage(chatId, invitedMsg);
+  } catch (e) {
+    console.error("Referral bonus error:", e);
+  }
+}
+
 
     session.step = "idle";
     session.tmp = {};
