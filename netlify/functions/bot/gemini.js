@@ -1,5 +1,19 @@
-const { GEMINI_API_KEY } = require("./config");
+// bot/gemini.js
 
+const { GEMINI_API_KEY, ADMIN_CHAT_ID } = require("./config");
+const { sendMessage } = require("./telegram");
+
+async function notifyGeminiError(message) {
+  try {
+    if (!ADMIN_CHAT_ID) return;
+    const text = `❗ Ошибка Gemini\n\n${String(message).slice(0, 3500)}`;
+    await sendMessage(ADMIN_CHAT_ID, text);
+  } catch (e) {
+    console.error("Failed to notify admin about Gemini error:", e);
+  }
+}
+
+// Основная функция генерации с ретраем и логом
 async function generateImageWithGemini(prompt, referenceImageBuffer) {
   const base64Image = referenceImageBuffer.toString("base64");
 
@@ -19,50 +33,69 @@ async function generateImageWithGemini(prompt, referenceImageBuffer) {
     ]
   };
 
-  const res = await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": GEMINI_API_KEY
-      },
-      body: JSON.stringify(body)
-    }
-  );
+  let lastError;
 
-  if (!res.ok) {
-    const text = await res.text();
-    console.error("Gemini error:", res.status, text);
-    throw new Error("Gemini API error");
-  }
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": GEMINI_API_KEY
+          },
+          body: JSON.stringify(body)
+        }
+      );
 
-  const json = await res.json();
-
-  let imageBase64 = null;
-  const candidates = json.candidates || [];
-  if (candidates.length > 0) {
-    const parts = candidates[0].content?.parts || [];
-    for (const part of parts) {
-      // Gemini в ответе отдаёт inlineData (camelCase),
-      // но на всякий случай поддерживаем и inline_data.
-      const inline = part.inlineData || part.inline_data;
-      if (inline?.data) {
-        imageBase64 = inline.data;
-        break;
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("Gemini error:", res.status, text);
+        throw new Error(`Gemini API error: ${res.status} ${text.slice(0, 500)}`);
       }
+
+      const json = await res.json();
+
+      let imageBase64 = null;
+      const candidates = json.candidates || [];
+      if (candidates.length > 0) {
+        const parts = candidates[0].content?.parts || [];
+        for (const part of parts) {
+          const inline = part.inlineData || part.inline_data;
+          if (inline?.data) {
+            imageBase64 = inline.data;
+            break;
+          }
+        }
+      }
+
+      if (!imageBase64) {
+        console.error(
+          "No image data in Gemini response",
+          JSON.stringify(json).slice(0, 2000)
+        );
+        throw new Error("No image data from Gemini");
+      }
+
+      return Buffer.from(imageBase64, "base64");
+    } catch (err) {
+      lastError = err;
+      console.error(`Gemini attempt ${attempt} failed:`, err);
+
+      if (attempt === 2) {
+        // отправляем лог админу и падаем
+        await notifyGeminiError(err.message || String(err));
+        throw err;
+      }
+
+      // небольшая пауза перед ретраем
+      await new Promise((r) => setTimeout(r, 1000));
     }
   }
 
-  if (!imageBase64) {
-    console.error(
-      "No image data in Gemini response",
-      JSON.stringify(json).slice(0, 2000)
-    );
-    throw new Error("No image data from Gemini");
-  }
-
-  return Buffer.from(imageBase64, "base64");
+  // теоретически не дойдём сюда
+  throw lastError || new Error("Unknown Gemini error");
 }
 
 // --- Маппинги значений из бота в английский текст ---
@@ -89,7 +122,7 @@ function mapItemType(item) {
   }
 }
 
-// ОБНОВЛЁННЫЕ позы
+// ОБНОВЛЁННЫЕ позы (пока ориентируемся на русские варианты)
 function mapPose(pose) {
   switch (pose) {
     case "Стоя, полный рост":
@@ -115,7 +148,7 @@ function mapPose(pose) {
   }
 }
 
-// ОБНОВЛЁННЫЕ фоны
+// ОБНОВЛЁННЫЕ фоны (ориентир по русским вариантам)
 function mapBackground(bg) {
   switch (bg) {
     case "Чистый студийный фон":

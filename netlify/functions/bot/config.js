@@ -19,11 +19,15 @@ const TELEGRAM_FILE_API = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}`;
 // 1 генерация ≈ 1 кредит
 const TRIAL_CREDITS = 10;
 
+// 🔹 реферальные бонусы
+const REF_BONUS_FOR_REFERRER = 5; // сколько даём пригласившему
+const REF_BONUS_FOR_INVITED = 5;  // сколько даём приглашённому магазину
+
 const DAILY_LIMIT_BY_PLAN = {
-  trial: 20,   // можно протестить
-  start: 150,  // малый магазин
-  pro: 400,    // средний
-  max: 1000    // крупный, на будущее
+  trial: 20,  // можно протестить
+  start: 150, // малый магазин
+  pro: 400,   // средний
+  max: 1000   // крупный, на будущее
 };
 
 const DEFAULT_DAILY_LIMIT = 20;
@@ -39,5 +43,7 @@ module.exports = {
   TRIAL_CREDITS,
   DAILY_LIMIT_BY_PLAN,
   DEFAULT_DAILY_LIMIT,
-  COOLDOWN_MS
+  COOLDOWN_MS,
+  REF_BONUS_FOR_REFERRER,
+  REF_BONUS_FOR_INVITED
 };

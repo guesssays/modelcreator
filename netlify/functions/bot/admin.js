@@ -107,33 +107,15 @@ async function notifyAdminNewShop(shop) {
     return;
   }
 
-  const text = `
-Новый магазин ожидает подтверждения:
+const text = `
+Новый магазин зарегистрирован:
 
 Название: ${shop.name}
 Instagram/Telegram: ${shop.instagram || "—"}
 Контакт: ${shop.contact || "—"}
 Chat ID: ${shop.chatId}
-
-Выберите действие с помощью кнопок ниже.
 `.trim();
 
-  await sendMessage(ADMIN_CHAT_ID, text, {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          {
-            text: "✅ Подтвердить",
-            callback_data: `approve:${shop.chatId}`
-          },
-          {
-            text: "❌ Отклонить",
-            callback_data: `reject:${shop.chatId}`
-          }
-        ]
-      ]
-    }
-  });
 }
 
 // ================== БАЗОВЫЕ ОПЕРАЦИИ approve / block / soft-reject ==================

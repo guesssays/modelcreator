@@ -1,4 +1,5 @@
 // bot/keyboards.js
+
 const { ADMIN_CHAT_ID } = require("./config");
 const { getShop, getSession } = require("./store");
 
@@ -6,9 +7,7 @@ const { getShop, getSession } = require("./store");
 function languageSelectKeyboard() {
   return {
     reply_markup: {
-      keyboard: [
-        [{ text: "Русский 🇷🇺" }, { text: "O'zbekcha 🇺🇿" }]
-      ],
+      keyboard: [[{ text: "Русский 🇷🇺" }, { text: "O'zbekcha 🇺🇿" }]],
       resize_keyboard: true,
       one_time_keyboard: true
     }
@@ -27,7 +26,7 @@ function registrationKeyboard(lang = "ru") {
   };
 }
 
-// Магазин pending
+// Магазин pending (оставлено для старых магазинов, но новые сразу active)
 function pendingKeyboard(lang = "ru") {
   const myShop =
     lang === "uz" ? "🏬 Mening do'konim" : "🏬 Мой магазин";
@@ -96,9 +95,7 @@ function myShopKeyboard(lang = "ru") {
   const deleteShop =
     lang === "uz" ? "🗑 Do'konni o'chirish" : "🗑 Удалить магазин";
   const backMain =
-    lang === "uz"
-      ? "⬅️ Asosiy menyu"
-      : "⬅️ В главное меню";
+    lang === "uz" ? "⬅️ Asosiy menyu" : "⬅️ В главное меню";
 
   return {
     reply_markup: {
@@ -141,17 +138,23 @@ async function getBaseKeyboard(chatId) {
   const session = getSession(chatId);
   const lang = (shop && shop.language) || session.language || "ru";
 
-if (!shop) {
-  return {
-    reply_markup: {
-      keyboard: [
-        [{ text: "🎨 Генерировать" }],
-        [{ text: lang === "uz" ? "ℹ️ Yordam" : "ℹ️ Помощь" }]
-      ],
-      resize_keyboard: true
-    }
-  };
-}
+  // Гость без магазина
+  if (!shop) {
+    const generateText =
+      lang === "uz" ? "🎨 Rasm yaratish" : "🎨 Генерировать";
+    const helpText =
+      lang === "uz" ? "ℹ️ Yordam" : "ℹ️ Помощь";
+
+    return {
+      reply_markup: {
+        keyboard: [
+          [{ text: generateText }],
+          [{ text: helpText }]
+        ],
+        resize_keyboard: true
+      }
+    };
+  }
 
   if (shop.status === "pending") return pendingKeyboard(lang);
   if (shop.status === "blocked") return blockedKeyboard(lang);
@@ -169,7 +172,11 @@ function itemTypeKeyboard(lang = "ru") {
           [{ text: "Kurtka" }, { text: "Palto" }, { text: "Jilet" }],
           [{ text: "Shim" }, { text: "Jinsi" }, { text: "Shorti" }],
           [{ text: "Koylak" }, { text: "Yubka" }, { text: "Kostyum" }],
-          [{ text: "Oyoq kiyim" }, { text: "Komplekt" }, { text: "Aksessuarlar" }],
+          [
+            { text: "Oyoq kiyim" },
+            { text: "Komplekt" },
+            { text: "Aksessuarlar" }
+          ],
           [{ text: "⬅️ Asosiy menyu" }]
         ],
         resize_keyboard: true,
@@ -196,14 +203,10 @@ function itemTypeKeyboard(lang = "ru") {
 }
 
 function peopleModeKeyboard(lang = "ru") {
-  const one =
-    lang === "uz" ? "Bitta model" : "Один человек";
-  const pair =
-    lang === "uz" ? "Juftlik" : "Пара";
+  const one = lang === "uz" ? "Bitta model" : "Один человек";
+  const pair = lang === "uz" ? "Juftlik" : "Пара";
   const back =
-    lang === "uz"
-      ? "⬅️ Asosiy menyu"
-      : "⬅️ В главное меню";
+    lang === "uz" ? "⬅️ Asosiy menyu" : "⬅️ В главное меню";
 
   return {
     reply_markup: {
@@ -221,9 +224,7 @@ function genderKeyboard(lang = "ru") {
   const man = lang === "uz" ? "Erkak" : "Мужчина";
   const woman = lang === "uz" ? "Ayol" : "Женщина";
   const back =
-    lang === "uz"
-      ? "⬅️ Asosiy menyu"
-      : "⬅️ В главное меню";
+    lang === "uz" ? "⬅️ Asosiy menyu" : "⬅️ В главное меню";
 
   return {
     reply_markup: {
@@ -238,16 +239,11 @@ function genderKeyboard(lang = "ru") {
 }
 
 function pairTypeKeyboard(lang = "ru") {
-  const p1 =
-    lang === "uz" ? "Yigit — yigit" : "Парень — парень";
-  const p2 =
-    lang === "uz" ? "Yigit — qiz" : "Парень — девушка";
-  const p3 =
-    lang === "uz" ? "Qiz — qiz" : "Девушка — девушка";
+  const p1 = lang === "uz" ? "Yigit — yigit" : "Парень — парень";
+  const p2 = lang === "uz" ? "Yigit — qiz" : "Парень — девушка";
+  const p3 = lang === "uz" ? "Qiz — qiz" : "Девушка — девушка";
   const back =
-    lang === "uz"
-      ? "⬅️ Asosiy menyu"
-      : "⬅️ В главное меню";
+    lang === "uz" ? "⬅️ Asosiy menyu" : "⬅️ В главное меню";
 
   return {
     reply_markup: {
@@ -265,9 +261,7 @@ function pairTypeKeyboard(lang = "ru") {
 // ОБНОВЛЁННАЯ клавиатура поз
 function poseKeyboard(lang = "ru") {
   const back =
-    lang === "uz"
-      ? "⬅️ Asosiy menyu"
-      : "⬅️ В главное меню";
+    lang === "uz" ? "⬅️ Asosiy menyu" : "⬅️ В главное меню";
 
   if (lang === "uz") {
     return {
@@ -275,8 +269,14 @@ function poseKeyboard(lang = "ru") {
         keyboard: [
           [{ text: "Tik turgan, bo'yi to'liq" }, { text: "Belgacha" }],
           [{ text: "Harakatda" }, { text: "O'tirgan" }],
-          [{ text: "Yarim yon tomondan" }, { text: "Qo'llar cho'ntakda" }],
-          [{ text: "Qo'llar ko'krakda chalishtirilgan" }, { text: "Devorga suyanib" }],
+          [
+            { text: "Yarim yon tomondan" },
+            { text: "Qo'llar cho'ntakda" }
+          ],
+          [
+            { text: "Qo'llar ko'krakda chalishtirilgan" },
+            { text: "Devorga suyanib" }
+          ],
           [{ text: "Yaqin kadr (portret)" }],
           [{ text: back }]
         ],
@@ -306,9 +306,7 @@ function poseKeyboard(lang = "ru") {
 // ОБНОВЛЁННАЯ клавиатура фонов
 function backgroundKeyboard(lang = "ru") {
   const back =
-    lang === "uz"
-      ? "⬅️ Asosiy menyu"
-      : "⬅️ В главное меню";
+    lang === "uz" ? "⬅️ Asosiy menyu" : "⬅️ В главное меню";
 
   if (lang === "uz") {
     return {
@@ -318,7 +316,10 @@ function backgroundKeyboard(lang = "ru") {
           [{ text: "Neytral gradient fon" }],
           [{ text: "Ko'cha (kun)" }, { text: "Ko'cha (kechqurun / neon)" }],
           [{ text: "Interyer (xonada)" }, { text: "Loft-interyer" }],
-          [{ text: "Kiyim do'koni / shourum" }, { text: "Kafe / qahvaxona" }],
+          [
+            { text: "Kiyim do'koni / shourum" },
+            { text: "Kafe / qahvaxona" }
+          ],
           [{ text: "Podyum / moda suratga olish" }],
           [{ text: back }]
         ],
@@ -332,17 +333,42 @@ function backgroundKeyboard(lang = "ru") {
   return {
     reply_markup: {
       keyboard: [
-        [{ text: "Чистый студийный фон" }, { text: "Минималистичный светлый фон" }],
+        [
+          { text: "Чистый студийный фон" },
+          { text: "Минималистичный светлый фон" }
+        ],
         [{ text: "Нейтральный градиентный фон" }],
         [{ text: "Улица (день)" }, { text: "Улица (вечер / неон)" }],
         [{ text: "Интерьер (комната)" }, { text: "Лофт-интерьер" }],
-        [{ text: "Магазин одежды / шоурум" }, { text: "Кафе / кофейня" }],
+        [
+          { text: "Магазин одежды / шоурум" },
+          { text: "Кафе / кофейня" }
+        ],
         [{ text: "Подиум / фэшн-съёмка" }],
         [{ text: back }]
       ],
       resize_keyboard: true,
       one_time_keyboard: true
     }
+  };
+}
+
+// Inline-кнопка регистрации магазина (после генерации)
+function registerShopInlineKeyboard(lang = "ru") {
+  const text =
+    lang === "uz"
+      ? "🏪 Do'konni ro'yxatdan o'tkazish"
+      : "🏪 Зарегистрировать магазин";
+
+  return {
+    inline_keyboard: [
+      [
+        {
+          text,
+          callback_data: "register_shop"
+        }
+      ]
+    ]
   };
 }
 
@@ -360,5 +386,6 @@ module.exports = {
   genderKeyboard,
   pairTypeKeyboard,
   poseKeyboard,
-  backgroundKeyboard
+  backgroundKeyboard,
+  registerShopInlineKeyboard
 };

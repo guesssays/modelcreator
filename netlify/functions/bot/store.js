@@ -11,7 +11,7 @@ const { getStore, connectLambda } = require("@netlify/blobs");
 // Ленивая инициализация хранилища Blobs
 let blobStore = null;
 
-const sessions = {}; // состояния диалогов по chatId (можно не сохранять, это временное)
+const sessions = {}; // состояния диалогов по chatId (в памяти)
 let shops = {};      // магазины по chatId
 let shopsLoaded = false;
 
@@ -48,7 +48,7 @@ function getToday() {
 
 async function loadShops() {
   ensureStore();
-  if (shopsLoaded) return;
+  if (shopsLoaded) return shops;
   try {
     const data = await blobStore.get("shops.json", { type: "json" });
     if (data && typeof data === "object") {
@@ -61,6 +61,7 @@ async function loadShops() {
     shops = {};
   }
   shopsLoaded = true;
+  return shops;
 }
 
 async function saveShops() {
@@ -78,14 +79,15 @@ async function saveShops() {
 
 function getSession(chatId) {
   if (!sessions[chatId]) {
-sessions[chatId] = {
-  step: "idle",
-  tmp: {},
-  language: null,
-  guestCreditsLeft: 10,
-  guestCreditsUsed: 0
-};
-
+    sessions[chatId] = {
+      step: "idle",
+      tmp: {},
+      language: null,
+      guestCreditsLeft: 10,
+      guestCreditsUsed: 0,
+      // для рефералок
+      referrerId: null
+    };
   }
   return sessions[chatId];
 }
@@ -94,49 +96,77 @@ sessions[chatId] = {
 
 async function getShop(chatId) {
   await loadShops();
-  const shop = shops[chatId] || null;
+  const id = String(chatId);
+  const shop = shops[id] || null;
+
+  let changed = false;
+
   if (shop) {
-    if (!shop.status) {
+    // все старые pending считаем активными
+    if (!shop.status || shop.status === "pending") {
       shop.status = "active";
+      changed = true;
     }
     if (!shop.language) {
       shop.language = "ru";
+      changed = true;
+    }
+    if (!shop.createdAt) {
+      shop.createdAt = new Date().toISOString();
+      changed = true;
     }
   }
+
+  if (changed) {
+    await saveShops();
+  }
+
   return shop;
 }
 
-// Создаём магазин со статусом pending
-async function createShop(chatId, { name, instagram, contact, language = "ru" }) {
+// Создаём магазин — сразу активный
+async function createShop(chatId, data) {
   await loadShops();
-  const today = getToday();
+  const id = String(chatId);
+  const now = new Date().toISOString();
+
   const shop = {
-    id: String(chatId),
-    chatId,
-    name,
-    instagram,
-    contact,
-    status: "pending",      // pending | active | blocked
+    chatId: id,
+    name: data.name || "",
+    instagram: data.instagram || "",
+    contact: data.contact || "",
+    language: data.language || "ru",
+
+    status: "active", // вместо pending
     plan: "trial",
-    creditsTotal: 0,
-    creditsLeft: 0,
+
+    creditsTotal: TRIAL_CREDITS,
+    creditsLeft: TRIAL_CREDITS,
+
     generatedToday: 0,
-    generatedTodayDate: today,
-    lastGeneratedAt: 0,
-    createdAt: new Date().toISOString(),
-    language: language || "ru"
+    generatedTodayDate: null,
+    lastGeneratedAt: null,
+
+    createdAt: now,
+
+    // для рефералок
+    referrerId: data.referrerId || null,
+
+    // для сохранения последних настроек генерации
+    lastSettings: data.lastSettings || null
   };
-  shops[chatId] = shop;
-  console.log("Shop created (pending):", shop);
+
+  shops[id] = shop;
   await saveShops();
   return shop;
 }
 
 async function deleteShop(chatId) {
   await loadShops();
-  if (shops[chatId]) {
-    console.log("Shop deleted:", shops[chatId]);
-    delete shops[chatId];
+  const id = String(chatId);
+  if (shops[id]) {
+    console.log("Shop deleted:", shops[id]);
+    delete shops[id];
     await saveShops();
     return true;
   }
@@ -177,7 +207,8 @@ async function listAllShops() {
 
 async function addCreditsToShop(chatId, credits) {
   await loadShops();
-  const shop = shops[chatId];
+  const id = String(chatId);
+  const shop = shops[id];
   if (!shop) return null;
   shop.creditsTotal += credits;
   shop.creditsLeft += credits;
@@ -187,7 +218,8 @@ async function addCreditsToShop(chatId, credits) {
 
 async function setShopPlan(chatId, plan) {
   await loadShops();
-  const shop = shops[chatId];
+  const id = String(chatId);
+  const shop = shops[id];
   if (!shop) return null;
   shop.plan = plan;
   await saveShops();
@@ -196,7 +228,8 @@ async function setShopPlan(chatId, plan) {
 
 async function setShopLanguage(chatId, language) {
   await loadShops();
-  const shop = shops[chatId];
+  const id = String(chatId);
+  const shop = shops[id];
   if (!shop) return null;
   shop.language = language || "ru";
   await saveShops();
@@ -210,7 +243,7 @@ async function persistShop(shop) {
 }
 
 module.exports = {
-  initBlobStore,          // <-- важно вызывать из handler
+  initBlobStore, // <-- важно вызывать из handler
   getToday,
   getSession,
   getShop,
