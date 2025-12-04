@@ -141,7 +141,18 @@ async function getBaseKeyboard(chatId) {
   const session = getSession(chatId);
   const lang = (shop && shop.language) || session.language || "ru";
 
-  if (!shop) return registrationKeyboard(lang);
+if (!shop) {
+  return {
+    reply_markup: {
+      keyboard: [
+        [{ text: "🎨 Генерировать" }],
+        [{ text: lang === "uz" ? "ℹ️ Yordam" : "ℹ️ Помощь" }]
+      ],
+      resize_keyboard: true
+    }
+  };
+}
+
   if (shop.status === "pending") return pendingKeyboard(lang);
   if (shop.status === "blocked") return blockedKeyboard(lang);
   return activeShopKeyboard(lang);

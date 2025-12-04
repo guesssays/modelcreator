@@ -78,11 +78,14 @@ async function saveShops() {
 
 function getSession(chatId) {
   if (!sessions[chatId]) {
-    sessions[chatId] = {
-      step: "idle",
-      tmp: {},
-      language: null // язык выбираем явно, а не по умолчанию
-    };
+sessions[chatId] = {
+  step: "idle",
+  tmp: {},
+  language: null,
+  guestCreditsLeft: 10,
+  guestCreditsUsed: 0
+};
+
   }
   return sessions[chatId];
 }

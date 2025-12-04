@@ -52,30 +52,18 @@ async function handleStart(chatId) {
   const shop = await getShop(chatId);
 
   // Если магазина нет — сначала выбор языка
-  if (!shop) {
-    if (!session.language) {
-      session.step = "await_language";
-      session.tmp = {};
-      await sendMessage(
-        chatId,
-        "Выберите язык / Tilni tanlang:",
-        languageSelectKeyboard()
-      );
-      return;
-    }
+if (!shop) {
+  const kb = await getBaseKeyboard(chatId);
+  await sendMessage(chatId,
+    "Добро пожаловать! 🎉\n" +
+    "У вас есть 10 бесплатных генераций без регистрации.\n\n" +
+    "Нажмите «🎨 Генерировать», чтобы попробовать."
+  , kb);
 
-    const lang = session.language || "ru";
-    session.step = "await_shop_name";
-    session.tmp = {};
+  session.step = "idle";
+  return;
+}
 
-    const text =
-      lang === "uz"
-        ? "Salom! 👋 Men sizning kiyimlaringizdan model fotosuratlar yaratib beradigan botman.\n\nAvval do'konni ro'yxatdan o'tkazamiz.\n\nKiyim do'koningiz nomini yozing:"
-        : "Привет! 👋 Я бот, который генерирует профессиональные фото моделей с вашей одеждой.\n\nДавайте начнём с регистрации.\n\nНапишите название вашего магазина одежды:";
-
-    await sendMessage(chatId, text, registrationKeyboard(lang));
-    return;
-  }
 
   const lang = getLang(chatId, session, shop);
 
@@ -221,16 +209,30 @@ async function handleStartGeneration(chatId) {
   const shop = await getShop(chatId);
   const lang = getLang(chatId, session, shop);
 
-  if (!shop) {
-    session.step = "await_shop_name";
-    session.tmp = {};
-    const text =
-      lang === "uz"
-        ? "Avval do'konni ro'yxatdan o'tkazing.\n\nKiyim do'koningiz nomini yozing:"
-        : "Сначала зарегистрируйте магазин.\n\nНапишите название вашего магазина одежды:";
-    await sendMessage(chatId, text, registrationKeyboard(lang));
-    return;
+if (!shop) {
+  // Пользователь — гость
+  if (session.guestCreditsLeft > 0) {
+      session.step = "await_photo";
+
+      await sendMessage(chatId, 
+        "У вас есть 10 бесплатных генераций без регистрации.\n" +
+        `Осталось: ${session.guestCreditsLeft}\n\n` +
+        "Отправьте фото вещи 👇"
+      );
+
+      return;
   }
+
+  // Если бесплатные генерации закончились — требуем регистрацию
+  await sendMessage(chatId,
+    "Ваши 10 бесплатных генераций закончились.\n" +
+    "Чтобы продолжить — зарегистрируйте магазин."
+  );
+
+  session.step = "await_shop_name";
+  return;
+}
+
 
   const kb = await getBaseKeyboard(chatId);
 
@@ -394,6 +396,9 @@ async function handleIncomingPhoto(chatId, message) {
     return;
   }
 
+
+
+
   const photos = message.photo || [];
   if (photos.length === 0) {
     const text =
@@ -483,29 +488,30 @@ async function handleTextMessage(chatId, text) {
 
     session.language = newLang;
 
-    const hasShop = !!shop;
-    if (hasShop) {
-      await setShopLanguage(chatId, newLang);
-      session.step = "idle";
-      session.tmp = {};
-      const kb = await getBaseKeyboard(chatId);
-      const confirmText =
-        newLang === "uz"
-          ? "Til o'zgartirildi. Asosiy menyu:"
-          : "Язык изменён. Главное меню:";
-      await sendMessage(chatId, confirmText, kb);
-      return;
-    }
+const hasShop = !!shop;
+if (hasShop) {
+  await setShopLanguage(chatId, newLang);
+  session.step = "idle";
+  session.tmp = {};
+  const kb = await getBaseKeyboard(chatId);
+  const confirmText =
+    newLang === "uz"
+      ? "Til o'zgartirildi. Asosiy menyu:"
+      : "Язык изменён. Главное меню:";
+  await sendMessage(chatId, confirmText, kb);
+  return;
+}
 
-    // Если магазина ещё нет — сразу в регистрацию
-    session.step = "await_shop_name";
-    session.tmp = {};
-    const msg =
-      newLang === "uz"
-        ? "Salom! 👋 Men sizning kiyimlaringizdan model fotosuratlar yaratib beradigan botman.\n\nAvval do'konni ro'yxatdan o'tkazamiz.\n\nKiyim do'koningiz nomini yozing:"
-        : "Привет! 👋 Я бот, который генерирует профессиональные фото моделей с вашей одеждой.\n\nДавайте начнём с регистрации.\n\nНапишите название вашего магазина одежды:";
-    await sendMessage(chatId, msg, registrationKeyboard(newLang));
-    return;
+// Гость без магазина: просто сохраняем язык и возвращаем в главное меню
+session.step = "idle";
+session.tmp = {};
+const kb = await getBaseKeyboard(chatId);
+const msgGuest =
+  newLang === "uz"
+    ? "Til tanlandi. Sizda 10 ta bepul generatsiya bor. Boshlash uchun «🎨 Rasm yaratish» tugmasini bosing."
+    : "Язык выбран. У вас есть 10 бесплатных генераций. Нажмите «🎨 Генерировать», чтобы начать.";
+await sendMessage(chatId, msgGuest, kb);
+return;
   }
 
   // Кнопка "назад в главное меню"
@@ -1050,6 +1056,71 @@ async function handleTextMessage(chatId, text) {
 
     const shopForGen = await getShop(chatId);
     const kb = await getBaseKeyboard(chatId);
+
+  if (!shopForGen) {
+    session.step = "generating";
+
+    const waitText =
+      lang === "uz"
+        ? "Tasvir yaratilmoqda, bu bir necha soniya vaqt olishi mumkin…"
+        : "Генерирую изображение, это может занять несколько секунд…";
+    await sendMessage(chatId, waitText, {});
+
+    try {
+      const photoBuffer = await downloadTelegramFile(session.tmp.photoFileId);
+      const prompt = buildPromptFromSession(session);
+
+      const imageBuffer = await generateImageWithGemini(
+        prompt,
+        photoBuffer
+      );
+
+      // 🔹 СПИСЫВАЕМ ГОСТЕВОЙ КРЕДИТ ЗДЕСЬ
+      session.guestCreditsLeft = Math.max(0, (session.guestCreditsLeft || 0) - 1);
+      session.guestCreditsUsed = (session.guestCreditsUsed || 0) + 1;
+
+      const caption =
+        lang === "uz"
+          ? "Mana sizning kiyimingiz bilan model tasviri 🎨"
+          : "Вот сгенерированная модель с вашей вещью 🎨";
+
+      await sendPhoto(chatId, imageBuffer, caption);
+
+      session.step = "idle";
+      session.tmp = {};
+
+      const kbAfter = await getBaseKeyboard(chatId);
+      let msg;
+      if (session.guestCreditsLeft <= 0) {
+        msg =
+          lang === "uz"
+            ? "Siz 10 ta bepul generatsiyadan foydalandingiz. Davom etish uchun do'konni ro'yxatdan o'tkazing."
+            : "Вы использовали все 10 бесплатных генераций. Чтобы продолжить — зарегистрируйте магазин.";
+      } else {
+        msg =
+          lang === "uz"
+            ? `Bepul generatsiyalardan qolganlari: ${session.guestCreditsLeft}`
+            : `Бесплатных генераций осталось: ${session.guestCreditsLeft}`;
+      }
+      await sendMessage(chatId, msg, kbAfter);
+    } catch (err) {
+      console.error("Error during guest generation:", err);
+      session.step = "idle";
+      session.tmp = {};
+      const kbErr = await getBaseKeyboard(chatId);
+      const msg =
+        lang === "uz"
+          ? "Tasvir generatsiyasi vaqtida xatolik yuz berdi. Birozdan keyin qayta urinib ko'ring."
+          : "Произошла ошибка при генерации изображения. Попробуйте ещё раз позже.";
+      await sendMessage(chatId, msg, kbErr);
+    }
+
+    return;
+  }
+
+  // 🔹 дальше идёт твоя старая логика ДЛЯ МАГАЗИНА:
+  // if (shopForGen.status === "pending") ...
+
 
     if (!shopForGen) {
       session.step = "await_shop_name";
