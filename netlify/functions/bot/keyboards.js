@@ -352,6 +352,26 @@ function backgroundKeyboard(lang = "ru") {
     }
   };
 }
+function generationModeKeyboard(lang = "ru") {
+  const quick =
+    lang === "uz"
+      ? "⚡ Oldingi sozlamalar bilan"
+      : "⚡ Быстро, как в прошлый раз";
+  const custom =
+    lang === "uz"
+      ? "⚙️ Yangi sozlamalar"
+      : "⚙️ Настроить заново";
+  const back =
+    lang === "uz" ? "⬅️ Asosiy menyu" : "⬅️ В главное меню";
+
+  return {
+    reply_markup: {
+      keyboard: [[{ text: quick }], [{ text: custom }], [{ text: back }]],
+      resize_keyboard: true,
+      one_time_keyboard: true
+    }
+  };
+}
 
 // Inline-кнопка регистрации магазина (после генерации)
 function registerShopInlineKeyboard(lang = "ru") {
@@ -387,5 +407,7 @@ module.exports = {
   pairTypeKeyboard,
   poseKeyboard,
   backgroundKeyboard,
-  registerShopInlineKeyboard
+  registerShopInlineKeyboard,
+  generationModeKeyboard // 🔹 ДОБАВЬ ЭТО
 };
+

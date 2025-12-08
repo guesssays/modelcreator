@@ -29,8 +29,10 @@ const {
   backgroundKeyboard,
   myShopKeyboard,
   languageSelectKeyboard,
-  registerShopInlineKeyboard
+  registerShopInlineKeyboard,
+  generationModeKeyboard // 🔹 добавить сюда
 } = require("./keyboards");
+
 const {
   getTariffText,
   getHelpText,
@@ -299,19 +301,20 @@ if (!shop) {
     return;
   }
 
-  // Если уже есть сохранённые настройки — даём "быстрый режим":
+  // Если уже есть сохранённые настройки — спрашиваем режим:
   if (shop.lastSettings) {
-    session.step = "await_photo_quick";
-    session.tmp = {};
+    session.step = "await_generation_mode";
+    session.tmp = session.tmp || {};
 
     const msg =
       lang === "uz"
-        ? "📸 Yangi kiyim fotosuratini yuboring.\nOldingi generatsiyadagi sozlamalar (model turi, yosh, poza, fon) saqlangan va qayta ishlatiladi."
-        : "📸 Отправьте новое фото вещи.\nНастройки из прошлой генерации (тип модели, возраст, поза, фон) сохранены и будут использованы снова.";
+        ? "Qanday boshlaymiz?\n\n⚡ «Oldingi sozlamalar bilan» — avvalgi generatsiyadagi model turi, yosh, poza va fonni ishlatish.\n\n⚙️ «Yangi sozlamalar» — hammasini boshqatdan sozlash."
+        : "Как запустить генерацию?\n\n⚡ «Быстро, как в прошлый раз» — использовать те же тип модели, возраст, позу и фон.\n\n⚙️ «Настроить заново» — задать все настройки с нуля.";
 
-    await sendMessage(chatId, msg);
+    await sendMessage(chatId, msg, generationModeKeyboard(lang));
     return;
   }
+
 
   // Первый раз — полный сценарий
   session.step = "await_photo";
@@ -867,6 +870,77 @@ async function handleTextMessage(chatId, text) {
     await handleStart(chatId);
     return;
   }
+
+  // ======Выбор режима генерации (быстрый / с нуля)======
+  if (session.step === "await_generation_mode") {
+    const quickRu = "⚡ Быстро, как в прошлый раз";
+    const quickUz = "⚡ Oldingi sozlamalar bilan";
+    const customRu = "⚙️ Настроить заново";
+    const customUz = "⚙️ Yangi sozlamalar";
+
+    // ⚡ Быстрый режим по прошлым настройкам
+    if (text === quickRu || text === quickUz) {
+      session.step = "await_photo_quick";
+      session.tmp = session.tmp || {};
+
+      const msgQuick =
+        lang === "uz"
+          ? "📸 Yangi kiyim fotosuratini yuboring.\nOldingi generatsiyadagi sozlamalar (model turi, yosh, poza, fon) saqlangan va qayta ishlatiladi."
+          : "📸 Отправьте новое фото вещи.\nНастройки из прошлой генерации (тип модели, возраст, поза, фон) сохранены и будут использованы снова.";
+
+      await sendMessage(chatId, msgQuick);
+      return;
+    }
+
+    // ⚙️ Полный сценарий с нуля
+    if (text === customRu || text === customUz) {
+      session.step = "await_photo";
+      session.tmp = {};
+
+      const fullText =
+        lang === "uz"
+          ? [
+              "📸 Modelda yaratish uchun kiyim fotosuratini yuboring 👇",
+              "",
+              "✅ Mos bo'ladigan foto:",
+              "• faqat BIRTA kiyim (xudi, kurtka, shim va hokazo) to'liq ko'rinishi",
+              "• yaxshi, teng yorug'lik",
+              "• fon oddiy: oq fon (ma'qul), devor, pol, osma, maneken",
+              "• atrofda ortiqcha buyumlar yo'q",
+              "",
+              "🚫 Mos kelmaydi:",
+              "• kiyim odam USTIDA bo'lsa (alohida kiyimni suratga oling)",
+              "• kollajlar, skrinshotlar, ustiga yozuvlar va stikeri bor rasmlar"
+            ].join("\n")
+          : [
+              "📸 Отправьте одно фото вещи, которую нужно сгенерировать на модели 👇",
+              "",
+              "✅ Подойдёт фото, где:",
+              "• видна ОДНА вещь (худи, куртка, штаны и т.п.) целиком",
+              "• хорошее ровное освещение",
+              "• фон простой: чисто белый (желательно), стена, пол, вешалка, манекен",
+              "• нет лишних предметов вокруг",
+              "",
+              "🚫 Не подойдёт:",
+              "• одежда НА человеке (нужно отдельно сфотографировать вещь)",
+              "• коллажи, скриншоты, фото с надписями и наклейками поверх"
+            ].join("\n");
+
+      await sendMessage(chatId, fullText, {
+        parse_mode: "Markdown"
+      });
+      return;
+    }
+
+    // Если нажали что-то другое — повторяем выбор режима
+    const repeatMsg =
+      lang === "uz"
+        ? "Iltimos, variantlardan birini tanlang: tezkor yoki yangi sozlamalar bilan."
+        : "Пожалуйста, выберите один из вариантов: быстрый запуск или с новыми настройками.";
+    await sendMessage(chatId, repeatMsg, generationModeKeyboard(lang));
+    return;
+  }
+
 
   // ======Главные кнопки======
 
